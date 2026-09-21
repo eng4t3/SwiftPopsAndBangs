@@ -17,8 +17,8 @@ Ha a vezérlő már be van szerelve a kocsiba, nem kell kiszerelned! Csak tölts
 ### 📲 Frissítés menete telefonról (3 lépés):
 1. **Töltsd le** a fenti `firmware.bin` fájlt a telefonod *Letöltések* mappájába.
 2. **Csatlakozz** az autó Wi-Fi hálózatára:
-   - **SSID:** `Swift-ShowTuning`
-   - **Jelszó:** `swift13gti`
+   - **SSID:** `Swift-PopsAndBangs`
+   - **Jelszó:** `swift123`
    - Nyisd meg a böngészőt: `http://192.168.4.1`
 3. **Telepítsd vezeték nélkül:**
    - Görgess le a **„📡 Vezeték nélküli frissítés (OTA)”** szekcióhoz.

@@ -40,7 +40,7 @@ Ez a dokumentum a **2000-es évjáratú Suzuki Swift 1.3 8V (G13BA motorkódos)*
 |   +5V OUT         GND                            |                                  |            |
 |     |              |                             |  GPIO 18 <--- RPM Pulzus (Bemenet|            |
 |   [470µF]       [100nF]                          |  GPIO 19 ---> Spark Cut (Kimenet)|            |
-|     |              |                             |  Wi-Fi AP: "Swift-ShowTuning"    |            |
+|     |              |                             |  Wi-Fi AP: "Swift-PopsAndBangs"   |            |
 |     +-------+------+                             +----------------------------------+            |
 |             |                                                                                    |
 +-------------|------------------------------------------------------------------------------------+
@@ -235,7 +235,7 @@ A `83 x 54 mm`-es próbapanelen így helyezd el az alkatrészeket a legtömöreb
    * Dugd be a felprogramozott ESP32-t és a két PC817 optocsatolót a foglalatokba.
    * Kapcsold vissza a tápot: az ESP32 kék LED-je felvillan.
 4. **Wi-Fi & Gomb Teszt**:
-   * Csatlakozz a telefonoddal a `Swift-ShowTuning` Wi-Fi-re (jelszó: `swift138v`).
+   * Csatlakozz a telefonoddal a `Swift-PopsAndBangs` Wi-Fi-re (jelszó: `swift123`).
    * Nyisd meg a böngészőben: `http://192.168.4.1`.
    * A mutatón lefut a nyitó söprés (0 $\rightarrow$ 8000 $\rightarrow$ 0 RPM).
    * Kapcsold be a **Master Arm**-ot, és tartsd nyomva a piros **🔥 2-STEP / FLAMES 🔥** gombot: az ESP32 kék LED-je és a panelen a tiltás kimenet aktívvá válik.

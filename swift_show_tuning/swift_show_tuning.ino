@@ -113,8 +113,8 @@ unsigned long cannonCutStart = 0;
 bool cannonInCutPhase = false;
 
 // Wi-Fi Access Point Configuration
-const char* AP_SSID = "Swift-ShowTuning";
-const char* AP_PASS = "swift138v";  // Change as desired (minimum 8 characters)
+const char* AP_SSID = "Swift-PopsAndBangs";
+const char* AP_PASS = "swift123";  // Change as desired (minimum 8 characters)
 IPAddress apIP(192, 168, 4, 1);
 IPAddress netMsk(255, 255, 255, 0);
 
