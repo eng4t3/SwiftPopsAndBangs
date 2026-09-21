@@ -1,0 +1,5 @@
+# PlatformIO build directory and temporary cache
+.pio/
+.vscode/
+.idea/
+*.log
