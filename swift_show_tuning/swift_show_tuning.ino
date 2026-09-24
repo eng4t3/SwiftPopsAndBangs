@@ -1136,11 +1136,10 @@ void setup() {
   Serial.print("Web Dashboard IP: http://");
   Serial.println(WiFi.softAPIP());
 
-  // Needed for the ETag check. Registered before otaBegin(): if the OTA module calls
-  // collectHeaders() itself (last call wins) it must include "If-None-Match" too, otherwise
-  // "/" simply always answers 200.
-  static const char* kHeaderKeys[] = {"If-None-Match"};
-  server.collectHeaders(kHeaderKeys, 1);
+  // The only collectHeaders() call (last call wins): "If-None-Match" for the ETag check on "/",
+  // "Origin" for the cross-site POST check in ota_update.cpp.
+  static const char* kHeaderKeys[] = {"If-None-Match", "Origin"};
+  server.collectHeaders(kHeaderKeys, 2);
 
   server.on("/", HTTP_GET, handleRoot);
 

@@ -94,10 +94,12 @@ Lefordítja a firmware-t, és a Windows 10/11 beépített `curl`-jével feltölt
 
 | Funkció | ESP32 Pin | Hardver modul / Csatlakozás |
 | :--- | :--- | :--- |
-| **Fordulatszám bemenet (Tach In)** | `GPIO 18` | PC817 optocsatoló kimenet (Gyújtótrafó NEGATÍV (-) pólusáról 1kΩ ellenállással) |
-| **Gyújtáselvétel (Spark Cut)** | `GPIO 19` | NPN tranzisztor (2N2222 / BD139) bázisa 1kΩ ellenálláson át (Kollektor a trafó (-) pólusra, emitter GND-re) |
+| **Fordulatszám bemenet (Tach In)** | `GPIO 18` | PC817 optocsatoló kimenet. Bemenet: a gyújtótrafó 2-pólusú csatlakozójának **BARNA/FEHÉR** szála (trafó negatív, a gyújtásmodul kapcsolt kimenete) 1 kΩ 1 W ellenálláson át |
+| **Gyújtáselvétel (Spark Cut)** | `GPIO 19` | PC817 + 2N2222 NPN tranzisztor. Kollektor: a gyújtásmodul (igniter) szürke 3-pólusú csatlakozójának **BARNA/SÁRGA** szála (ECU → igniter vezérlőjel, "IB"), emitter: GND |
 | **Állapotjelző LED** | `GPIO 2` | Kék beépített LED (tiltáskor világít / OTA frissítés alatt folyamatos) |
 | **Fizikai Rajt Kapcsoló** | `GPIO 23` | Kézifékkar / kuplungpedál kapcsoló $\to$ GND (belső felhúzó ellenállás aktív) |
+
+> ⛔ **A tiltó tranzisztort SOHA ne kösd a trafó negatív (-) pólusára (barna/fehér szál)!** Ott a gyújtáskor több száz voltos tüskék vannak: a 2N2222 (40 V) tönkremegy, jellemzően zárlatosra, ami menet közben leállítja a motort. A tiltás mindig az ECU vezérlőszálára (barna/sárga) megy.
 
 > 📖 Részletes kapcsolási rajz és méretezési útmutató a [WIRING_AND_SETUP_GUIDE.md](WIRING_AND_SETUP_GUIDE.md) fájlban található!
 

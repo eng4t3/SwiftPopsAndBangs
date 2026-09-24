@@ -15,9 +15,9 @@ Ez a dokumentum a **2000-es évjáratú Suzuki Swift 1.3 8V (G13BA motorkódos)*
                                                                                        |
  Hengerfej / Karosszéria Testcsavar -------------------------------------------------+ |
                                                                                      | |
- Fordulatszám Jel (Tachometer, Barna szál a sárga diagnosztikai csatlakozóból) ----+ | |
+ Fordulatszám Jel (Barna/Fehér szál, trafó 2-pólusú csatlakozó = trafó negatív) ---+ | |
                                                                                    | | |
- Gyújtásmodul "IB" Vezérlőszál (ECU és trafó közötti vékony jelvezeték) ----------+| | |
+ Gyújtásmodul "IB" Vezérlőszál (Barna/Sárga, igniter szürke csatlakozó) ----------+| | |
                                                                                   ||| |
                                                                                   vvv v
 +--------------------------------------------------------------------------------------------------+
@@ -82,19 +82,23 @@ Autó Test (GND) ---------------------------------------------------------------
 ### B. Fordulatszám Bemeneti Szekció (Tachometer $\rightarrow$ GPIO 18)
 ```
                                         DIL-08 FOGLALAT (PC817 - Opto 1)
-Autó Barna Kábel                          +--------\_/--------+
-(Fordulatszám Jel) --[ 1kΩ 1W ]---------> | 1 (Anód)     4 (C)| ----> ESP32 GPIO 18
-                                          |                   |
-Autó Test (GND) <----+---[ 1N4148 ]------ | 2 (Katód)    3 (E)| ----> ESP32 GND
-                     |   (Csík Pin 1-re)  +-------------------+
-                     |
-(Közös motor test) --+
+Trafó 2-pólusú csatl.                     +--------\_/--------+
+BARNA/FEHÉR szál   --[ 1kΩ 1W ]----+----> | 1 (Anód)     4 (C)| ----> ESP32 GPIO 18
+(trafó negatív)                    |      |                   |
+                              [ 1N4148 ]  |                   |
+                              (Csík a     |                   |
+                               Pin 1-re)  |                   |
+                                   |      |                   |
+Autó Test (GND) -------------------+----> | 2 (Katód)    3 (E)| ----> ESP32 GND
+                                          +-------------------+
 ```
-* **Működés**: Amikor a motor forog, a barna vezetéken 12V-os impulzusok érkeznek (fordulatonként 2 db).
-* Az `1 kΩ (1W)` ellenállás lecsökkenti az áramot kíméletes $\sim 12\text{ mA}$-re.
-* A `1N4148` dióda védi az optocsatoló LED-jét a negatív feszültségtüskéktől (a dióda fekete gyűrűs vége a Pin 1 felé néz).
-* A PC817 fototranzisztora a belső pull-up-pal ellátott **GPIO 18**-at rántja le 0V-ra minden gyújtási eseménynél.
-* **100% galvanikus leválasztás**: az autó elektromos tüskéi soha nem érhetik el az ESP32-t!
+* **Működés**: A barna/fehér szál a trafó negatív pólusa (a gyújtásmodul kapcsolt kimenete). Amikor a gyújtásmodul nem tölti a trafót, ezen ~12 V van (az opto LED világít, a GPIO 18 alacsony). Töltés közben ~1 V (a LED nem világít). A szikra pillanatában a feszültség visszaugrik 12 V-ra, egy rövid, több száz voltos tüskével. A GPIO 18 **lefutó éle = egy gyújtás**, fordulatonként 2 db.
+* Az `1 kΩ (1W)` ellenállás a folyamatos áramot ~11 mA-re korlátozza. A szikra tüskéjénél rövid ideig ennél jóval nagyobb áram folyik.
+* A `1N4148` dióda **fordítva, párhuzamosan** kerül a LED-del (a csíkos vége a Pin 1-re, a másik vége a Pin 2-re), és a negatív tüskéket vezeti el. **Ne kösd sorba!** Sorba kötve, rossz irányban, lezárja a LED-et, és az RPM mindig 0 marad.
+* A PC817 fototranzisztora a belső pull-up-pal ellátott **GPIO 18**-at rántja le 0 V-ra, amíg a LED világít.
+* **Fontos:** tiltás alatt a gyújtásmodul nem tölti a trafót, ezért **ilyenkor nincs fordulatszám-impulzus**. A firmware ezt kezeli: a kimaradt gyújtásokat időzítéssel becsüli, és csak a valódi szikrákból mér.
+* **Leválasztás:** az opto miatt a trafó tüskéi nem jutnak az ESP32 bemenetére, de a föld közös (az ESP32 a tápegységen keresztül az autó testén van).
+* **Opcionális javítás:** az 1 kΩ helyett 3,3–4,7 kΩ (1 W) kisebb tüskeáramot enged a LED-re, és a jel így is bőven elég. Egy külső 4,7 kΩ-os felhúzó ellenállás a GPIO 18 és a 3,3 V között élesebb jelélt ad.
 
 ---
 
@@ -198,21 +202,27 @@ A `83 x 54 mm`-es próbapanelen így helyezd el az alkatrészeket a legtömöreb
 
 ## 5. Suzuki Swift 1.3 8V (2000 - G13BA) Autós Csatlakozási Pontok
 
-### 1. Fordulatszám Jel (Barna vezeték)
-* **Hol találod?** 
-  * A motortérben, a tűzfalon az ablaktörlő motor mellett van egy sárga gumisapkás **6-pólusú diagnosztikai csatlakozó**.
-  * Ebben a csatlakozóban van egy **tömör BARNA (`BRN`) szál**. Erre kell rácsatlakozni (ez közvetlenül a gyári tachométer jele).
-  * *Alternatíva*: A műszeregység mögött a fordulatszámmérő óra csatlakozójának barna szála.
+> ✅ **Bevált bekötés** (ebben az autóban így működik): RPM = trafó csatlakozó **barna/fehér**, tiltás = igniter csatlakozó **barna/sárga**, +12 V = **fekete/fehér**, GND = hengerfej / szívósor testcsavar.
 
-### 2. Gyújtás Tiltó Szál (IB szál)
+### 1. Fordulatszám Jel (Barna/Fehér vezeték)
 * **Hol találod?**
-  * A hengerfej jobb (váltó felőli) oldalán, a gyújtáselosztó mellett található a gyújtástrafó és a hozzá csavarozott kis fekete gyújtásmodul (igniter).
-  * A gyújtásmodulba menő 2 vagy 3 szálas csatlakozóban keresd az **ECU-ból érkező vékony vezérlőszálat** (gyárilag általában **barna/fehér** vagy **fekete/fehér**).
-  * Ebbe a vezetékbe kell belekötni (T-leágazással) a 2N2222 Kollektorát.
+  * A tűzfalon lévő hengeres gyújtótrafó **2-pólusú csatlakozójában** a **BARNA/FEHÉR** szál (főleg barna, vékony fehér csíkkal). Ez a trafó negatív pólusa: a gyújtásmodulból jön, és ugyanez a jel megy a gyári fordulatszámmérőre is.
+  * A másik szál ugyanitt a fekete/fehér +12 V.
+  * *Alternatíva*: a tűzfalon lévő sárga gumisapkás 6-pólusú diagnosztikai csatlakozó barna szála, vagy a műszeregység fordulatszámmérőjének barna szála.
+  * Erre megy az `1 kΩ 1W` ellenállás és az Opto 1 (lásd a **B.** szekciót). **Erre a szálra SOHA ne kösd a tiltó tranzisztort!**
+
+### 2. Gyújtás Tiltó Szál (IB szál, Barna/Sárga vezeték)
+* **Hol találod?**
+  * A trafótól jobbra lévő **lapos kis gyújtásmodul (igniter) szürke, 3-pólusú csatlakozójában**:
+    * **fekete/fehér** = +12 V táp,
+    * **barna/fehér** = a trafó negatívjára megy (ez az RPM jel, lásd fent),
+    * **barna/sárga** = **az ECU-ból jövő vezérlőszál (IB)**. **Erre kell rácsatlakozni.**
+  * Ebbe a barna/sárga vezetékbe kell belekötni (T-leágazással) a 2N2222 kollektorát.
 
 ### 3. Gyújtáskapcsolt +12V Táp (Fekete/Fehér vezeték)
 * **Hol találod?**
-  * A műszerfal alatti biztosítéktáblánál a **7-es számú biztosíték (Meter/Ignition)** mögött, vagy a gyújtáskapcsoló vastagabb kábelkötegében a **fekete alapon fehér csíkos (`BLK/WHT`)** szál.
+  * A gyújtótrafó pozitív (+) oldalára menő **fekete alapon fehér csíkos (`BLK/WHT`)** tápkábel (csak ráadott gyújtásnál, kulcs II-es állásban van rajta 12 V, így álló autóban nem meríti az akksit).
+  * *Alternatíva*: A műszerfal alatti biztosítéktáblánál a **7-es számú biztosíték (Meter/Ignition)** mögött ugyanez a szál.
   * **KÖTELEZŐ**: Közvetlenül a leágazás után építsd be a **lengő biztosítékházat az 1A-es biztosítékkal**!
 
 ### 4. Testelés (GND)
