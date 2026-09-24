@@ -98,6 +98,7 @@
 #define LOG_CAP_POOL            16      // ... ahead of the capture head (64 KB)
 
 #define LOG_PROG_NOCUT_MS       200
+#define LOG_PROG_REDLINE_MARGIN 600   // no flash programs within this many RPM below the redline
 #define LOG_PROG_GAP_MS         10
 #define LOG_PROG_PER_TICK       2
 #define LOG_ERASE_GAP_MS        250
@@ -1281,6 +1282,9 @@ static bool progSafe(uint32_t now, const EngineTelemetry& t) {
   if (otaIsBusy()) return false;
   if (t.cutActive || t.launchState != LAUNCH_OFF || t.showActive || t.switchActive) return false;
   if (g_everCut && (now - g_lastCutMs) < LOG_PROG_NOCUT_MS) return false;
+  // A program stalls both CPUs ~1 ms and can drop the engine's slot clock: keep the flash
+  // quiet while the engine approaches the rev limiter, so its first cut is never delayed.
+  if (t.rpm >= engineGetConfig().redlineRpm - LOG_PROG_REDLINE_MARGIN) return false;
   return true;
 }
 
