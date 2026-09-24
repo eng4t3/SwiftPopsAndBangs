@@ -53,6 +53,10 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   .badge { background: linear-gradient(135deg, #ff2247, #aa0720); font-size: .6rem; padding: 2px 7px; border-radius: 4px; letter-spacing: .5px; }
   .brand-sub { font-size: .7rem; color: var(--muted); font-weight: 700; letter-spacing: 1.2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .fw-chip { color: var(--cyan); }
+  .prof-chip { color: var(--amber); }
+  .prof { display: flex; align-items: center; gap: 8px; padding: 10px; }
+  .prof .seg { flex: 1; }
+  .seg button.pend { animation: blink .5s infinite alternate; }
   .top-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
   .pill { display: flex; align-items: center; gap: 6px; font: 800 .6rem var(--disp); letter-spacing: .8px; padding: 6px 11px; border-radius: 20px; background: #00000080; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
   .pill.up { color: var(--green); border-color: #0f86; background: #00ff881a; }
@@ -97,22 +101,19 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   .scale { display: flex; justify-content: space-between; font: 700 .6rem var(--disp); color: var(--muted); margin-top: 4px; }
   .scale span { width: 0; display: flex; justify-content: center; }
 
-  /* Launch / show control */
+  /* Launch control */
   .launch { padding: 12px; }
-  .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
-  .seg button { padding: 8px 6px; min-height: 48px; border-radius: 12px; background: #0e1420e6; border: 1px solid var(--line); color: var(--muted); display: flex; flex-direction: column; align-items: center; }
+  .seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .seg button { padding: 8px 6px; min-height: 48px; border-radius: 12px; background: #0e1420e6; border: 1px solid var(--line); color: var(--muted); display: flex; align-items: center; justify-content: center; }
   .seg b { font: 800 .66rem var(--disp); letter-spacing: .5px; }
-  .seg small { font-size: .72rem; }
   .seg button.active { background: #00f0ff24; border-color: var(--cyan); color: var(--cyan); box-shadow: 0 0 14px #00f0ff40; }
   .fire-btn { width: 100%; min-height: 104px; padding: 12px 10px 16px; border-radius: 20px; border: 2px solid var(--red); background: linear-gradient(180deg, #2a0b12, #130407); display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 6px; position: relative; overflow: hidden; box-shadow: 0 8px 28px #ff22474c, inset 0 1px 0 #ffffff26; transition: transform .05s, background .1s; -webkit-touch-callout: none; }
-  .fire-btn.show { touch-action: none; }
   .fire-btn::before { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(45deg, #ffffff05 0 8px, transparent 8px 16px); pointer-events: none; }
   .fire-title { font: 900 1.15rem var(--disp); letter-spacing: 1.2px; text-align: center; text-shadow: 0 0 12px var(--red-glow); }
   .fire-sub { font-size: .8rem; font-weight: 700; letter-spacing: 1px; color: var(--red); text-align: center; }
   .fire-cd { position: absolute; left: 0; right: 0; bottom: 0; height: 7px; background: #00000073; opacity: 0; }
   .fire-cd i { display: block; height: 100%; background: linear-gradient(90deg, #ff8800, var(--amber)); transform-origin: left; transition: transform .1s linear; }
-  .fire-btn.pressed { background: var(--red); transform: translateY(3px) scale(.985); box-shadow: 0 0 45px #ff2247f2; }
-  .fire-btn.pressed .fire-sub, .fire-btn.holding .fire-sub { color: #fff; }
+  .fire-btn.holding .fire-sub { color: #fff; }
   .fire-btn.armed { background: linear-gradient(180deg, #332505, #171102); border-color: var(--amber); animation: pulseAmber 1.2s infinite ease-in-out; }
   .fire-btn.armed .fire-sub { color: var(--amber); }
   .fire-btn.armed .fire-cd { opacity: 1; }
@@ -259,7 +260,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 <header class="card topbar">
   <div class="brand">
     <div class="brand-title">SWIFT <span class="badge">G13BA</span></div>
-    <div class="brand-sub"><span id="fwChip" class="fw-chip" hidden></span>1.3L 8V SHOW VEZÉRLŐ</div>
+    <div class="brand-sub"><span id="profChip" class="prof-chip" hidden></span><span id="fwChip" class="fw-chip" hidden></span>1.3L 8V SHOW VEZÉRLŐ</div>
   </div>
   <div class="top-actions">
     <div id="statusPill" class="pill connecting"><i class="dot"></i><span id="statusText">KERESÉS…</span></div>
@@ -290,10 +291,6 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 </section>
 
 <section class="card launch">
-  <div class="seg" role="group" aria-label="Rajt mód">
-    <button id="modeHandsFree" onclick="setLaunchMode('handsfree')"><b>⚡ HANDS-FREE RAJT</b><small>egy koppintás</small></button>
-    <button id="modeShow" onclick="setLaunchMode('show')"><b>🔥 SHOW MÓD</b><small>nyomva tartás</small></button>
-  </div>
   <button id="btnTwoStep" class="fire-btn">
     <span id="fireTitle" class="fire-title"></span>
     <span id="fireSub" class="fire-sub"></span>
@@ -305,6 +302,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
 <!-- slider blocks are built from SLIDERS -->
 <div id="settings" class="settings loading">
+  <div id="profBar" class="card prof" hidden><div id="profSeg" class="seg" role="group" aria-label="Profil"></div><button class="icon-btn" onclick="profRename()" aria-label="Profil átnevezése">✎</button></div>
   <details class="card" id="grpLaunch" open>
     <summary><span class="ico">🏁</span><span class="st">RAJT / LAUNCH</span><span id="sumLaunch" class="sv"></span><i class="chev"></i></summary>
     <div class="cb">
@@ -335,7 +333,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         <button class="pat" data-p="1" data-seq="xxxoxxxo"><b>🔥 LÁNGCSÓVA</b><small>3 szikra kimarad, 1 gyújt</small></button>
         <button class="pat" data-p="2" data-seq="xxoxxoxx"><b>💥 DURROGÁS</b><small>2 szikra kimarad, 1 gyújt</small></button>
         <button class="pat" data-p="3" data-seq="xoxoxoxo"><b>🎯 AK-47</b><small>1 kimarad, 1 gyújt – gyors staccato</small></button>
-        <button class="pat" data-p="4" data-seq="Looo"><b>💣 ÁGYÚLÖVÉS</b><small>~1,6 s teljes tiltás, majd nagy dörrenés – show módban és kapcsolóval; redline-on és rajtkor kemény tiltás</small></button>
+        <button class="pat" data-p="4" data-seq="Looo"><b>💣 ÁGYÚLÖVÉS</b><small>~1,6 s teljes tiltás, majd nagy dörrenés – a 2-step kapcsolóval; redline-on és rajtkor kemény tiltás</small></button>
       </div>
       <div class="hint center">Gyújtásonként: piros = kimaradó szikra, zöld = gyújtás</div>
       <div class="row"><div class="lbl"><b>👻 Ghost Cam™ / V8 alapjárat</b><small>Hegyes vezértengelyes dadogás alapjáraton (650–1250 RPM)</small></div><label class="sw"><input type="checkbox" id="cfgGhostCam" aria-label="Ghost Cam"><span></span></label></div>
@@ -345,7 +343,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   <details class="card" id="grpSafety" open>
     <summary><span class="ico">🛡️</span><span class="st">BIZTONSÁG</span><span id="sumSafety" class="sv"></span><i class="chev"></i></summary>
     <div class="cb">
-      <div class="row"><div class="lbl"><b>Rendszer élesítve (főkapcsoló)</b><small>Kikapcsolva soha nem vesz el szikrát – a gyári gyújtás 100%-ban működik</small></div><label class="sw"><input type="checkbox" id="cfgArmed" checked aria-label="Rendszer élesítve"><span></span></label></div>
+      <div class="row"><div class="lbl"><b>Rendszer élesítve (főkapcsoló)</b><small>Kikapcsolva soha nem vesz el szikrát – a gyári gyújtás 100%-ban működik.<span id="armHint" hidden> Közös, nem része a profiloknak.</span></small></div><label class="sw"><input type="checkbox" id="cfgArmed" checked aria-label="Rendszer élesítve"><span></span></label></div>
       <div class="sl" data-sl="cfgTimeout"><div class="hint">Teljesen jobbra húzva: NINCS LIMIT (∞) – csak óvatosan!</div></div>
     </div>
   </details>
@@ -434,7 +432,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       <dt>Szabad memória</dt><dd id="sysHeap">–</dd>
       <dt>Telemetria</dt><dd id="sysRate">–</dd>
     </dl>
-    <button class="btn warn" onclick="restoreDefaults()">🔄 AJÁNLOTT ÉRTÉKEK VISSZAÁLLÍTÁSA</button>
+    <button class="btn warn" id="resetBtn" onclick="restoreDefaults()">🔄 AJÁNLOTT ÉRTÉKEK VISSZAÁLLÍTÁSA</button>
   </div>
 </details>
 </div>
@@ -455,11 +453,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     <p>• Rajt után 3 mp-ig nincs gázelvételi durrogás, hogy váltáskor ne rángasson.</p>
   </div>
   <div class="msec">
-    <h3>🔥 Show mód / 2-step</h3>
-    <p>Amíg nyomva tartod a gombot, a motor a rajt limiten tilt (állóhelyzeti durrogtatás, lángok); elengedve azonnal leáll.</p>
-    <p><b>Biztonság:</b> a telefon 200 ms-onként megerősíti a nyomva tartást; ha a kapcsolat megszakad vagy elhagyod az oldalt, a vezérlő 0,6 mp-en belül magától elengedi.</p>
-    <p><b>Padteszt:</b> ha a motor tényleg áll (legalább 2 mp-e, nem csak járás közben szakadt meg a jel), a show gomb folyamatosan tilt (bekötés-ellenőrzés, a kék LED világít), legfeljebb kb. 10 mp-ig – utána engedd el és nyomd meg újra. Padteszt közben a motor nem indul – indítás előtt engedd el a gombot.</p>
-    <p><b>GPIO 23 kapcsoló:</b> kézifékre vagy kuplungra kötve ugyanígy 2-step, de padtesztet soha nem indít, így kinyomott kuplunggal is indul a motor.</p>
+    <h3>🎚 2-step kapcsoló (GPIO 23)</h3>
+    <p>Kézifékre vagy kuplungpedálra kötve: amíg be van kapcsolva, a motor a rajt limiten tilt (állóhelyzeti durrogtatás, lángok).</p>
   </div>
   <div class="msec">
     <h3>⚡ Limiter / redline</h3>
@@ -476,7 +471,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     <p>• <b>Lángcsóva:</b> 3 kimarad, 1 gyújt – sok keverék a kipufogóban, nagy lángok.</p>
     <p>• <b>Durrogás:</b> 2 kimarad, 1 gyújt – sűrű, mély lövések.</p>
     <p>• <b>AK-47:</b> 1 kimarad, 1 gyújt – gyors, géppuskaszerű staccato.</p>
-    <p>• <b>Ágyúlövés:</b> kb. 1,6 s teljes tiltás (a kipufogó megtelik keverékkel), majd visszajön a szikra: egy nagy dörrenés és tűzgolyó. Ez show módban és a 2-step kapcsolóval működik; a redline-on és hands-free rajtkor kemény tiltásként viselkedik.</p>
+    <p>• <b>Ágyúlövés:</b> kb. 1,6 s teljes tiltás (a kipufogó megtelik keverékkel), majd visszajön a szikra: egy nagy dörrenés és tűzgolyó. Ez a 2-step kapcsolóval működik; a redline-on és hands-free rajtkor kemény tiltásként viselkedik.</p>
   </div>
   <div class="msec">
     <h3>👻 Ghost Cam™ / V8 alapjárat</h3>
@@ -484,13 +479,17 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   </div>
   <div class="msec">
     <h3>📟 Mi tilt most?</h3>
-    <p>A fordulatszám fölötti sávban: <b>2-STEP</b> (show gomb), <b>RAJT</b>, <b>KAPCSOLÓ</b> (GPIO 23), <b>REDLINE</b>, <b>DURROGÁS</b>, <b>GHOST CAM</b>, <b>PADTESZT</b>. <b>ANTI-FLOOD ZÁR:</b> a 100%-os tiltás elérte az időkorlátot, ezért a vezérlő szikrákat is enged (a limiter közben is működik).</p>
+    <p>A fordulatszám fölötti sávban: <b>RAJT</b>, <b>KAPCSOLÓ</b> (GPIO 23 2-step), <b>REDLINE</b>, <b>DURROGÁS</b>, <b>GHOST CAM</b>. <b>ANTI-FLOOD ZÁR:</b> a 100%-os tiltás elérte az időkorlátot, ezért a vezérlő szikrákat is enged (a limiter közben is működik).</p>
   </div>
   <div class="msec">
     <h3>🛡️ Biztonság</h3>
     <p>• <b>Főkapcsoló:</b> kikapcsolva a vezérlő soha nem vesz el szikrát.</p>
     <p>• <b>Anti-flood:</b> ha a tiltás a beállított ideig (pl. 3 s) egybefüggően 100%-os (pl. ágyúlövésnél), a vezérlő szikrákat is enged, hogy a gyertyák ne ázzanak el. A mintázatos tiltásban eleve vannak szikrák. Jobb szélen (∞) kikapcsol.</p>
-    <p>• 2000 RPM alatt nincs tiltás (kivéve Ghost Cam, padteszt). A főkapcsoló kikapcsolt állásában a redline limiter sem működik, csak a gyári ECU. Áramtalanítva, újraindulás és frissítés alatt a gyári gyújtás 100%-ban működik.</p>
+    <p>• 2000 RPM alatt nincs tiltás (kivéve Ghost Cam). A főkapcsoló kikapcsolt állásában a redline limiter sem működik, csak a gyári ECU. Áramtalanítva, újraindulás és frissítés alatt a gyári gyújtás 100%-ban működik.</p>
+  </div>
+  <div class="msec">
+    <h3>🎛 Profilok</h3>
+    <p><b>🚗 UTCA</b>: diszkrét közúti vezetés, csak a limiter. <b>🔥 SHOW</b>: lángok, durrogás, ghost cam. <b>🏁 RAJT</b>: rajtra hangolva. A kiválasztott profilt szerkeszted, a MENTÉS abba ír; váltáskor a nem mentett változás elvész. ✎ = átnevezés. A főkapcsoló közös.</p>
   </div>
   <div class="msec">
     <h3>💾 Mentés</h3>
@@ -498,11 +497,11 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   </div>
   <div class="msec">
     <h3>📈 Adatnapló</h3>
-    <p>A vezérlő magától rögzít a flash-ébe: az egész útról 25 mintát másodpercenként (fordulat, tiltás, rajt állapot), eseményeknél (rajt, redline, anti-flood, rendellenesség, kézi mentés) gyújtásonkénti részletességgel is. Gyújtáslevétel után is megmarad, vezetés közben nem kell hozzá a telefon, és csak akkor ír, amikor semmi nem tilt. A CSV letölthető, és elküldheted elemzésre, hangolásra. A Naplózás kapcsolóval kikapcsolható: ilyenkor semmit nem ír, a meglévő felvételek megmaradnak.</p>
+    <p>A vezérlő magától rögzít a flash-ébe: az egész útról 25 mintát másodpercenként (fordulat, tiltás, rajt állapot), eseményeknél (rajt, redline, anti-flood, rendellenesség, kézi mentés) gyújtásonként is. Gyújtáslevétel után is megmarad, vezetés közben nem kell a telefon, és csak akkor ír, ha semmi nem tilt. A CSV letölthető és elküldhető elemzésre, hangolásra. A Naplózás kapcsolóval kikapcsolható; a meglévő felvételek megmaradnak.</p>
   </div>
   <div class="msec">
     <h3>📡 Firmware frissítés</h3>
-    <p>Három mód (részletek a Firmware frissítés kártyán): <b>telefonon át</b> (ajánlott; mobilnet kell az autó Wi-Fi-je mellett), <b>Wi-Fi-n</b> (az ESP maga tölti le egy internetes Wi-Fi-n) és <b>kézi .bin feltöltés</b>. Utána a vezérlő újraindul, az oldal ellenőrzi az új verziót; hiba esetén a régi marad. Álló motornál frissíts.</p>
+    <p>Három mód: <b>telefonon át</b> (mobilnet kell az autó Wi-Fi-je mellett), <b>Wi-Fi-n</b> (az ESP maga tölti le) és <b>kézi .bin</b>. Utána újraindul, az oldal ellenőrzi az új verziót; hiba esetén a régi marad. Álló motornál frissíts.</p>
   </div>
 </div>
     <div class="modal-foot"><button class="btn" onclick="closeModal()">RENDBEN, ÉRTETTEM</button></div>
@@ -519,7 +518,7 @@ const store = {
   set(k, v) { try { localStorage.setItem('swift.' + k, v); } catch (e) {} }
 };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-// haptics need a prior user tap (Chrome logs an error otherwise)
+// haptics need a prior user tap
 const vibrate = p => { try { const a = navigator.userActivation; if (navigator.vibrate && (!a || a.hasBeenActive)) navigator.vibrate(p); } catch (e) {} };
 const dec = (v, n) => Number(v).toFixed(n).replace('.', ',');
 const kb = b => Math.round((b || 0) / 1024) + ' KB';
@@ -560,7 +559,7 @@ function setRpm(rpm) {
 }
 function drawRpm() {
   G.raf = 0;
-  // The firmware does not cap the reading: show the real number, clamp only the bar
+  // real number (not capped); only the bar is clamped
   const rpm = Math.max(0, Math.min(9999, G.rpm | 0));
   if (rpm === G.shown) return;
   G.shown = rpm;
@@ -587,7 +586,6 @@ function renderCut() {
   b.className = 'cut-line' + (on ? (lock ? ' lock' : ' on') : '');
   b.textContent = key === 'x' ? 'NINCS ADAT' : lock ? '⏸ ANTI-FLOOD ZÁR' : on ? '⚡ TILTÁS: ' + (REASONS[S.reason] || 'AKTÍV') : '✓ NINCS TILTÁS';
   $('cluster').classList.toggle('cutting', on && !lock);
-  if (L.showHeld) renderLaunch();
 }
 
 // ---- WebSocket link (port 81): stale detection + reconnect
@@ -625,7 +623,7 @@ function scheduleReconnect() {
   wsFails++;
   wsTimer = setTimeout(connectWS, Math.min(1000 * wsFails, 4000));
 }
-// closed during a firmware upload (frees the ESP), resumed afterwards
+// closed during a firmware upload (frees the ESP)
 function suspendWS(on) {
   if (DEMO || wsSuspended === on) return;
   wsSuspended = on;
@@ -649,11 +647,11 @@ function linkDown() {
   S.connected = false;
   S.cut = false;
   S.reason = 0;
-  showRelease();
   setConn('down');
   renderCut();
   renderLaunch();
   if (saving) saveFailed('Megszakadt a kapcsolat.');
+  profEnd();
 }
 function onMessage(msg) {
   lastMsgAt = Date.now();
@@ -661,8 +659,11 @@ function onMessage(msg) {
   if (msg.startsWith('T:')) { rateN++; onTelemetry(msg.slice(2)); }
   else if (msg.startsWith('CFG:')) onConfig(msg.slice(4));
   else if (msg.startsWith('ACK:SAVED')) onSaved();
+  else if (msg.startsWith('ACK:PROFILE')) toast('Profil: ' + P.names[P.cur]);
+  else if (msg.startsWith('ACK:RESET')) toast('✔ ' + P.names[P.cur] + ' profil gyári értékeken');
+  else if (msg.startsWith('ERR:')) { toast(msg.slice(4) || 'A vezérlő elutasította a kérést.', 'err'); profEnd(); }
 }
-// T:<rpm>,<cut>,<launchState>,<launchLeftMs>,<reason>   (old firmware sends only the first 3)
+// T:<rpm>,<cut>,<launchState>,<launchLeftMs>,<reason> (old firmware: first 3)
 function onTelemetry(p) {
   const f = p.split(',');
   const ls = f.length > 2 ? (parseInt(f[2], 10) || 0) : 0;
@@ -683,7 +684,7 @@ setInterval(() => {
   }
   if (S.connected && !cfgReceived && now - cfgAskAt > 2000) { cfgAskAt = now; wsSend('GET_CONFIG'); }
   renderCut();
-  if (S.connected && L.state === 1 && L.mode === 'handsfree') renderCountdown(now);
+  if (S.connected && L.state === 1) renderCountdown(now);
   if (now - rateAt >= 1000) {
     const hz = Math.round(rateN * 1000 / (now - rateAt));
     rateN = 0; rateAt = now;
@@ -691,23 +692,10 @@ setInterval(() => {
   }
 }, 100);
 
-// ---- Launch control (hands-free) and show-mode 2-step button
-const L = {
-  mode: store.get('mode', 'handsfree') === 'show' ? 'show' : 'handsfree',
-  state: 0, leftMs: 0, leftAt: 0, totalMs: 10000,
-  cmdAt: 0, cmdState: 0, armSentAt: 0, lastTapAt: 0, fixAt: 0,
-  showHeld: false, showTimer: 0, pid: null
-};
+// ---- Hands-free launch control (tap = arm / disarm)
+const L = { state: 0, leftMs: 0, leftAt: 0, totalMs: 10000, cmdAt: 0, cmdState: 0, armSentAt: 0, lastTapAt: 0 };
 const btn = $('btnTwoStep');
 
-function setLaunchMode(m) {
-  if (m === L.mode) return;
-  showRelease();
-  if (L.state === 1 || L.state === 2) { wsSend('LAUNCH:DISARM'); setLaunchLocal(0); }
-  L.mode = m;
-  store.set('mode', m);
-  renderLaunch();
-}
 function setLaunchLocal(st) {
   L.cmdAt = Date.now();
   L.cmdState = L.state = st;
@@ -717,11 +705,6 @@ function setLaunchLocal(st) {
 function onLaunchTelemetry(ls, left) {
   const now = Date.now();
   if (now - L.cmdAt < 600 && ls !== L.cmdState) return;   // older than our last command
-  if (L.mode === 'show') {
-    // hands-free launch must never stay armed behind the show-mode UI
-    if ((ls === 1 || ls === 2) && now - L.fixAt > 1000) { L.fixAt = now; wsSend('LAUNCH:DISARM'); }
-    return;
-  }
   if (ls === 1) {
     if (left !== null) { L.leftMs = left; L.leftAt = now; if (left > L.totalMs) L.totalMs = left; }
     else if (!L.leftAt) { L.leftMs = 10000; L.leftAt = now; }   // old firmware: local countdown
@@ -763,69 +746,30 @@ function renderCountdown(now) {
   txt('fireSub', 'MÉG ' + dec(left / 1000, 1) + ' MP • KOPPINTÁS = MÉGSE');
 }
 function renderLaunch() {
-  const hf = L.mode === 'handsfree';
-  [['modeHandsFree', hf], ['modeShow', !hf]].forEach(([id, on]) => { $(id).classList.toggle('active', on); $(id).setAttribute('aria-pressed', on); });
-  let cls = hf ? 'hf' : 'show', title, sub = '';
+  let cls = '', title, sub = '';
   if (!S.connected) {
-    cls += ' offline'; title = '🔌 NINCS KAPCSOLAT'; sub = 'VÁRAKOZÁS A VEZÉRLŐRE…';
-  } else if (!hf) {
-    if (L.showHeld) {
-      cls += ' pressed'; title = '🔥 2-STEP AKTÍV 🔥';
-      sub = S.reason === 7 ? 'PADTESZT • INDÍTÁS ELŐTT ENGEDD EL' : S.reason === 8 ? 'ANTI-FLOOD ZÁR • ENGEDD EL' : 'ENGEDD EL A LEÁLLÍTÁSHOZ';
-    } else { title = '🏁 SHOW MÓD / 2-STEP'; sub = 'TARTSD NYOMVA A DURROGÁSHOZ ÉS LÁNGOKHOZ'; }
+    cls = 'offline'; title = '🔌 NINCS KAPCSOLAT'; sub = 'VÁRAKOZÁS A VEZÉRLŐRE…';
   } else if (L.state === 1) {
-    cls += ' armed'; title = '⚡ RAJTRA KÉSZ • ARMED';
+    cls = 'armed'; title = '⚡ RAJTRA KÉSZ • ARMED';
   } else if (L.state === 2) {
-    cls += ' holding'; title = '🔥 TILTÁS • ' + $('cfgLaunch').value + ' RPM'; sub = 'ENGEDD FEL A KUPLUNGOT A RAJTHOZ!';
+    cls = 'holding'; title = '🔥 TILTÁS • ' + $('cfgLaunch').value + ' RPM'; sub = 'ENGEDD FEL A KUPLUNGOT A RAJTHOZ!';
   } else if (L.state === 3) {
-    cls += ' fired'; title = '🚀 RAJT! KILÖVÉS'; sub = 'TILTÁS FELOLDVA • PADLÓGÁZ!';
+    cls = 'fired'; title = '🚀 RAJT! KILÖVÉS'; sub = 'TILTÁS FELOLDVA • PADLÓGÁZ!';
   } else {
     title = '🏁 RAJTAUTOMATIKA ÉLESÍTÉSE'; sub = 'KOPPINTS AZ ÉLESÍTÉSHEZ • 10 MP KÉSZENLÉT';
   }
   btn.className = 'fire-btn ' + cls;
   txt('fireTitle', title);
   if (sub) txt('fireSub', sub); else renderCountdown(Date.now());
-  $('lsSteps').hidden = !hf;
   document.querySelectorAll('#lsSteps span').forEach(s => s.classList.toggle('on', S.connected && +s.dataset.s === L.state));
   $('armWarn').hidden = $('cfgArmed').checked;
 }
-// Show mode: BTN:1 on press, re-sent every 200 ms while held (dead-man), BTN:0 on release
-function showPress() {
-  if (L.showHeld) return false;
-  if (!S.connected || !wsSend('BTN:1')) { toast('Nincs kapcsolat a vezérlővel', 'err'); vibrate([30, 30, 30]); return false; }
-  L.showHeld = true;
-  L.showTimer = setInterval(() => { if (!wsSend('BTN:1')) showRelease(); }, 200);
-  vibrate(40);
-  renderLaunch();
-  return true;
-}
-function showRelease() {
-  L.pid = null;
-  if (!L.showHeld) return;
-  L.showHeld = false;
-  clearInterval(L.showTimer);
-  wsSend('BTN:0');
-  renderLaunch();
-}
-btn.addEventListener('click', () => { if (L.mode === 'handsfree') onLaunchTap(); });
-btn.addEventListener('pointerdown', e => {
-  if (L.mode !== 'show' || e.button > 0) return;
-  e.preventDefault();
-  if (showPress()) { L.pid = e.pointerId; try { btn.setPointerCapture(e.pointerId); } catch (x) {} }
-});
-['pointerup', 'pointercancel', 'pointerleave', 'lostpointercapture'].forEach(n => btn.addEventListener(n, e => {
-  if (L.pid === null || e.pointerId === L.pid) showRelease();
-}));
-btn.addEventListener('keydown', e => { if (L.mode === 'show' && e.key === ' ') { e.preventDefault(); if (!e.repeat) showPress(); } });
-btn.addEventListener('keyup', e => { if (e.key === ' ') showRelease(); });
-btn.addEventListener('contextmenu', e => e.preventDefault());
-document.addEventListener('visibilitychange', () => { if (document.hidden) showRelease(); });
-window.addEventListener('blur', showRelease);
+btn.addEventListener('click', onLaunchTap);
 
 // ---- Settings: SET_CFG, SAVE_FLASH -> ACK:SAVED
 // id: [min, max, step, default, title, subtitle]
 const SLIDERS = {
-  cfgLaunch: [2500, 6500, 50, 3800, 'Rajt limit (2-step)', 'Ezen a fordulaton tart a rajt és a show mód'],
+  cfgLaunch: [2500, 6500, 50, 3800, 'Rajt limit (2-step)', 'Ezen a fordulaton tart a rajt és a 2-step kapcsoló'],
   cfgDrop: [300, 1500, 50, 400, 'Kuplung-felengedés érzékenység', 'Ennyivel a limit alá eső fordulat = kuplung fent'],
   cfgRedline: [3000, 7500, 50, 6200, 'Fordulatszám-limit', 'E fölött mindig tilt – motorvédelem'],
   cfgDecel: [2500, 6000, 50, 3200, 'Bekapcsolási küszöb', 'Csak e fordulat fölötti gázelvételnél durrog'],
@@ -844,6 +788,8 @@ const KEY_OF = {};
 for (const k in INPUTS) KEY_OF[INPUTS[k]] = k;
 const PATTERN_NAMES = ['KEMÉNY TILTÁS', 'LÁNGCSÓVA', 'DURROGÁS', 'AK-47', 'ÁGYÚLÖVÉS'];
 let curPattern = 1, cfgLoaded = false;
+// Profiles (v2.2): pend = slot of a running PROFILE / PROFILE_RESET
+const P = { names: null, cur: 0, pend: -1, tok: 0 }, PROF_ICON = ['🚗', '🔥', '🏁'];
 // dirty = changed since the last confirmed save; pend = not sent yet
 const dirty = new Set(), pend = new Set();
 let saving = false, savingKeys = null, saveTimer = 0, lastCfgSentAt = 0, cfgSendTimer = 0;
@@ -899,9 +845,9 @@ function onUserChange(keys) {
   renderSave();
   queueSend();
 }
-// Only changed keys, <= 10/s with a trailing send, never before this connection's CFG
+// Changed keys only, <= 10/s + trailing send; not before this link's CFG or during a switch
 function queueSend() {
-  if (!S.connected || !cfgReceived || !pend.size) return;
+  if (!S.connected || !cfgReceived || !pend.size || P.pend >= 0) return;
   const wait = 100 - (Date.now() - lastCfgSentAt);
   if (wait <= 0) sendCfgNow();
   else if (!cfgSendTimer) cfgSendTimer = setTimeout(sendCfgNow, wait);
@@ -909,7 +855,7 @@ function queueSend() {
 function sendCfgNow() {
   clearTimeout(cfgSendTimer);
   cfgSendTimer = 0;
-  if (!cfgReceived || !pend.size) return;
+  if (!cfgReceived || !pend.size || P.pend >= 0) return;
   const c = readCfg(), part = {};
   pend.forEach(k => { part[k] = c[k]; });
   if (wsSend('SET_CFG:' + JSON.stringify(part))) { lastCfgSentAt = Date.now(); pend.clear(); }
@@ -920,11 +866,19 @@ function onConfig(json) {
   if (!c || typeof c !== 'object') return;
   cfgReceived = true;
   if (c.fw) setFw(String(c.fw));
-  // device values win, except unsaved user changes (re-sent: the ESP may have rebooted)
+  // after a switch / reset or another active profile: fresh baseline, no stale dirty keys
+  const prof = Array.isArray(c.profiles);
+  if (prof && (P.pend >= 0 || (c.profile | 0) !== P.cur)) { dirty.clear(); pend.clear(); }
+  P.names = prof ? c.profiles.map(String) : null;
+  P.cur = c.profile | 0;
+  P.pend = -1;
+  // device values win, except unsaved edits (re-sent after a reboot)
   const keep = new Set([...dirty, ...pend]);
   applyCfg(c, keep);
   keep.forEach(k => pend.add(k));
-  if (!cfgLoaded) { cfgLoaded = true; $('settings').classList.remove('loading'); }
+  cfgLoaded = true;
+  $('settings').classList.remove('loading');
+  renderProf();
   renderCfg();
   renderSave();
   renderLaunch();
@@ -934,7 +888,8 @@ function renderSave() {
   const d = isDirty();
   $('saveBtn').className = 'save-btn' + (saving ? ' saving' : d ? ' dirty' : '');
   $('saveBtn').disabled = saving || !cfgLoaded;
-  txt('saveTxt', !cfgLoaded ? '⏳ BEÁLLÍTÁSOK BETÖLTÉSE…' : saving ? '⏳ MENTÉS…' : d ? '💾 MENTÉS A FLASH-BE' : '✔ BEÁLLÍTÁSOK MENTVE');
+  const pn = P.names && P.names[P.cur].toUpperCase();
+  txt('saveTxt', !cfgLoaded ? '⏳ BEÁLLÍTÁSOK BETÖLTÉSE…' : saving ? '⏳ MENTÉS…' : d ? '💾 MENTÉS' + (pn ? ': ' + pn + ' PROFILBA' : ' A FLASH-BE') : '✔ ' + (pn ? pn + ' PROFIL' : 'BEÁLLÍTÁSOK') + ' MENTVE');
   txt('saveSub', !cfgLoaded ? 'A vezérlő elküldi a jelenlegi értékeket' : saving ? 'Várakozás a vezérlő visszaigazolására' : d ? 'Nem mentett változás – újraindításkor elveszne' : 'Induláskor is ezeket tölti be');
 }
 function saveToFlash() {
@@ -968,8 +923,59 @@ function saveFailed(why) {
   renderSave();
   toast('A mentés nem sikerült: ' + why + ' Próbáld újra.', 'err');
 }
+function renderProf() {
+  const on = !!P.names, sel = P.pend >= 0 ? P.pend : P.cur;
+  ['profBar', 'profChip'].forEach(id => { $(id).hidden = !on; });
+  $('armHint').hidden = !on;
+  txt('resetBtn', on ? '🔄 PROFIL VISSZAÁLLÍTÁSA GYÁRI ÉRTÉKRE' : '🔄 AJÁNLOTT ÉRTÉKEK VISSZAÁLLÍTÁSA');
+  if (on) {
+    $('profSeg').innerHTML = P.names.map((n, i) => `<button data-p="${i}" class="${i === sel ? 'active' : ''}${i === P.pend ? ' pend' : ''}"><b>${PROF_ICON[i] || ''} ${esc(n)}</b></button>`).join('');
+    txt('profChip', P.names[P.cur] + ' • ');
+  }
+  renderSave();
+}
+// PROFILE:<n> / PROFILE_RESET: settings inert until the CFG that follows
+function profCmd(msg, slot) {
+  if (P.pend >= 0 || saving) return;
+  if (!S.connected) return toast('Nincs kapcsolat a vezérlővel', 'err');
+  clearTimeout(cfgSendTimer);
+  cfgSendTimer = 0;
+  pend.clear();   // unsent edits must not land in the new profile
+  wsSend(msg);
+  P.pend = slot;
+  $('settings').classList.add('loading');
+  renderProf();
+  const t = ++P.tok;
+  setTimeout(() => { if (t === P.tok && P.pend >= 0) { toast('Nincs visszaigazolás – próbáld újra.', 'warn'); profEnd(); } }, 4000);
+}
+// refused / timeout / link lost: keep and re-send the unsaved edits
+function profEnd() {
+  if (P.pend < 0) return;
+  P.pend = -1;
+  $('settings').classList.toggle('loading', !cfgLoaded);
+  dirty.forEach(k => pend.add(k));
+  renderProf();
+  queueSend();
+}
+$('profSeg').addEventListener('click', e => {
+  const b = e.target.closest('[data-p]'), n = b ? +b.dataset.p : P.cur;
+  if (n === P.cur || P.pend >= 0) return;
+  if (isDirty() && !confirm('A(z) ' + P.names[P.cur] + ' profil nem mentett változásai elvesznek. Váltasz?')) return;
+  profCmd('PROFILE:' + n, n);
+});
+function profRename() {
+  const old = P.names && P.names[P.cur];
+  if (!old) return;
+  const v = prompt('A(z) ' + old + ' profil új neve (max. 12 karakter):', old);
+  const name = v === null ? '' : v.replace(/["\\\u0000-\u001f]/g, '').trim().slice(0, 12);
+  if (name && name !== old) { if (!wsSend('PROFILE_NAME:' + P.cur + ':' + name)) toast('Nincs kapcsolat a vezérlővel', 'err'); }
+}
 function restoreDefaults() {
   if (!S.connected || !cfgReceived) { toast('Nincs kapcsolat a vezérlővel', 'err'); return; }
+  if (P.names) {
+    if (confirm('A(z) ' + P.names[P.cur] + ' profil visszaáll a gyári értékekre (és mentődik). Folytatod?')) profCmd('PROFILE_RESET', P.cur);
+    return;
+  }
   if (!confirm('Visszaállítod az ajánlott értékeket?\nA jelenlegi beállítások felülíródnak és a flash-be mentődnek.')) return;
   applyCfg(CFG_DEF);
   onUserChange(Object.keys(CFG_DEF));
@@ -1091,8 +1097,7 @@ function flashBlob(blob, md5, ui) {
     x.send(fd);
   });
 }
-// After flashing, confirm the reboot via /api/info: by the target version if known, else by
-// `uptime` (ms since boot) < time since the upload; without `uptime`: soft message.
+// Confirm the reboot via /api/info: target version, else `uptime` < time since the upload
 async function waitForVersion(expect, ui) {
   const t0 = Date.now(), el = () => Date.now() - t0;
   const fail = msg => { suspendWS(false); throw new Error(msg); };
@@ -1121,7 +1126,7 @@ function updateDone(i, ui, sure) {
   if (!DEMO) { FW.reloading = true; setTimeout(() => location.reload(), 2500); }
 }
 
-// Path 1: the phone downloads from GitHub (raw.githubusercontent.com, CORS ok), then uploads
+// Path 1: the phone downloads from raw.githubusercontent.com, then uploads
 const OTHER_WAYS = ' Használd a „Frissítés Wi-Fi-n” módot (az ESP tölti le), vagy a kézi feltöltést.';
 async function ghFetch(path, timeout) {
   if (DEMO) return sim.gh(path);
@@ -1198,7 +1203,7 @@ async function phoneInstall() {
   setBusy(false);
 }
 
-// Path 2: the ESP downloads by itself over an internet Wi-Fi; the page polls its status
+// Path 2: the ESP downloads over an internet Wi-Fi; the page polls
 const OTA_LABEL = { idle: 'Tétlen', connecting: 'Csatlakozás a Wi-Fi-hez…', checking: 'Verzió ellenőrzése…', available: 'Új verzió elérhető', uptodate: 'Naprakész', downloading: 'Letöltés…', flashing: 'Írás a flash-be…', done: 'Kész – újraindulás…', error: 'Hiba' };
 const OTA_BUSY = ['connecting', 'checking', 'downloading', 'flashing'];
 const poll = { on: false, timer: 0, fails: 0, wasBusy: false, expect: 0, waiting: false };
@@ -1234,7 +1239,7 @@ async function espAction(kind) {
     if (r && r.ok === false) throw new Error(r.msg || 'A vezérlő elutasította a kérést.');
     if (kind !== 'cancel') p2.set(kind === 'install' ? 'Telepítés indul…' : 'Ellenőrzés indul…', 'info');
   } catch (e) {
-    // the reply can get lost when the ESP switches Wi-Fi channel: keep polling
+    // the reply can get lost on a channel switch: keep polling
     if (!e.net) { p2.set(e.message, 'err'); return; }
     p2.set('A kérés elment, de nem jött válasz – figyelem az állapotot…', 'warn');
   }
@@ -1338,7 +1343,7 @@ async function logPost(what, done) {
   const r = await api('/api/log/' + what, { method: 'POST', body: '', timeout: 5000 }).catch(e => ({ ok: false, msg: e.message }));
   if (r.ok === false) toast(r.msg || 'A vezérlő elutasította.', 'err'); else done(r);
 }
-// Naplózás switch: optimistic, reverted with a toast when POST /api/log/config fails
+// Naplózás switch: optimistic, reverted on error
 let logBusy = false;
 function logEnUi(on) { $('logEn').checked = on; $('logSnapBtn').disabled = !on; }
 async function logToggle(on) {
@@ -1449,33 +1454,39 @@ function closeModal() { $('infoModal').classList.remove('open'); $('infoModal').
 $('infoModal').addEventListener('click', e => { if (e.target === $('infoModal')) closeModal(); });
 window.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
-// ---- Demo mode (file:// or ?demo=1): simulated engine, firmware and API, no network
+// ---- Demo mode (file:// or ?demo=1): simulated engine, firmware and API
 const sim = DEMO ? makeSim() : null;
 function makeSim() {
   const s = {
-    online: true, bootAt: Date.now() - 600000, cfg: Object.assign({}, CFG_DEF), rpm: 850, gas: false, btn: false, btnAt: 0, thr: false, liftAt: 0,
+    online: true, bootAt: Date.now() - 600000, cfg: Object.assign({}, CFG_DEF), rpm: 850, gas: false, thr: false, liftAt: 0,
     ls: 0, armAt: 0, holdAt: 0, firedAt: 0, cutStart: 0, job: 0, pending: null, next: { fw: '2.1.0', code: 20100 },
     info: { fw: '2.0.0', code: 20000, built: '2026-09-24T12:00:00Z', heap: 180000, repo: DEF_REPO, branch: 'main', staSsid: '', autoCheck: false },
     ota: { state: 'idle', progress: 0, msg: '', current: '2.0.0' }
   };
   s.recv = m => {
     const now = Date.now();
-    if (m === 'BTN:1') { s.btn = true; s.btnAt = now; }
-    else if (m === 'BTN:0') s.btn = false;
-    else if (m === 'LAUNCH:ARM') { s.ls = 1; s.armAt = now; }
+    if (m === 'LAUNCH:ARM') { s.ls = 1; s.armAt = now; }
     else if (m === 'LAUNCH:DISARM') s.ls = 0;
-    else if (m === 'GET_CONFIG') setTimeout(() => onMessage('CFG:' + JSON.stringify(Object.assign({ fw: s.info.fw }, s.cfg))), 60);
+    else if (m === 'GET_CONFIG') setTimeout(sendCfg, 60);
     else if (m.startsWith('SET_CFG:')) Object.assign(s.cfg, JSON.parse(m.slice(8)));
-    else if (m === 'SAVE_FLASH') setTimeout(() => onMessage('ACK:SAVED'), 300);
+    else if (m === 'SAVE_FLASH') { s.slots[s.prof] = Object.assign({}, s.cfg); setTimeout(() => onMessage('ACK:SAVED'), 300); }
+    else if (m.startsWith('PROFILE:')) { const n = +m.slice(8); if (!s.slots[n]) return onMessage('ERR:Érvénytelen profil'); s.prof = n; load(n, 'PROFILE'); }
+    else if (m === 'PROFILE_RESET') { s.slots[s.prof] = fact(s.prof); load(s.prof, 'RESET'); }
+    else if (m.startsWith('PROFILE_NAME:')) { const [, n, ...rest] = m.split(':'), name = rest.join(':').trim().slice(0, 12); if (name && s.names[n]) s.names[n] = name; sendCfg(); }
   };
+  const FACT = [{ decelPops: false, ghostCam: false, cutPattern: 0 }, { decelPops: true, ghostCam: true, cutPattern: 1 }, { launchRpm: 3500, decelPops: false, ghostCam: false, cutPattern: 0 }];
+  const fact = n => Object.assign({}, CFG_DEF, FACT[n]);
+  const sendCfg = () => onMessage('CFG:' + JSON.stringify(Object.assign({ fw: s.info.fw, profile: s.prof, profiles: s.names }, s.cfg)));
+  const load = (n, ack) => setTimeout(() => { s.cfg = Object.assign({}, s.slots[n], { armed: s.cfg.armed }); sendCfg(); onMessage('ACK:' + ack); }, 250);
+  Object.assign(s, { prof: 1, names: ['UTCA', 'SHOW', 'RAJT'], slots: [0, 1, 2].map(fact) });
+  s.cfg = fact(1);
   // ~30 Hz engine model (launch states, cut priority, anti-flood)
   s.tick = () => {
     if (!s.online) return;
     const now = Date.now(), c = s.cfg;
-    if (s.btn && now - s.btnAt > 600) s.btn = false;   // dead-man, like the firmware
     // demo driver: floors it when armed, drops the clutch after ~2.5 s
     const clutch = s.ls === 2 && now - s.holdAt > Math.min(2500, (c.maxCutSeconds || 9) * 1000 - 600);
-    const thr = s.gas || s.btn || s.ls === 2 || (s.ls === 1 && now - s.armAt > 1200) || (s.ls === 3 && now - s.firedAt < 1800);
+    const thr = s.gas || s.ls === 2 || (s.ls === 1 && now - s.armAt > 1200) || (s.ls === 3 && now - s.firedAt < 1800);
     if (s.thr && !thr) s.liftAt = now;
     s.thr = thr;
     const idle = c.ghostCam ? 900 + Math.sin(now / 230) * 150 : 850 + Math.sin(now / 1500) * 30;
@@ -1487,7 +1498,7 @@ function makeSim() {
     } else if (s.ls === 3 && now - s.firedAt > 2000) s.ls = 0;
     let want = 0;
     if (c.armed) {
-      if ((s.btn || s.ls === 2) && s.rpm >= c.launchRpm) want = s.btn ? 1 : 2;
+      if (s.ls === 2 && s.rpm >= c.launchRpm) want = 2;
       else if (s.rpm >= c.redlineRpm) want = 4;
       else if (c.decelPops && !thr && s.rpm >= c.decelRpm && now - s.liftAt < 1200) want = 5;
       else if (c.ghostCam && !thr && s.rpm < 1300 && now % 700 < 90) want = 6;
@@ -1505,7 +1516,7 @@ function makeSim() {
     setTimeout(() => {
       Object.assign(s.info, { fw: t.fw, code: t.code });
       s.ota = { state: 'idle', progress: 0, msg: '', current: t.fw };
-      s.ls = 0; s.btn = false; s.online = true; s.bootAt = Date.now();
+      s.ls = 0; s.online = true; s.bootAt = Date.now();
       linkUp();
     }, 5000);
   };
@@ -1557,7 +1568,7 @@ function makeSim() {
     }
     throw new Error('HTTP 404');
   };
-  // Data logger mock: captures (with a trace per ignition slot) and drives
+  // Data logger mock
   s.nextId = 58;
   s.logOn = true;
   s.caps = [
@@ -1588,7 +1599,7 @@ function makeSim() {
     const h = Object.assign({ fw: s.info.fw, type: c ? c.type : 'drive', id: c ? c.id : 0, boot: it.boot, t0_ms: it.t0, trigger_ms: c ? it.t0 + (c.type === 'redline' ? 3000 : 0) : 0 }, s.cfg, c && { pulses: slot });
     return Object.keys(h).map(x => '# ' + x + '=' + h[x]).join('\n') + '\n' + SMP_COLS + '\n' + rows.join('\n') + (tr.length ? '\n# trace\nt_us,kind,period_us,info\n' + tr.join('\n') : '') + '\n';
   };
-  // GitHub mock: manifest, then a streamed fake image (0xE9 first)
+  // GitHub mock: manifest + streamed fake image
   s.gh = async path => {
     await sleep(500);
     if (path === 'version.json') return new Response(JSON.stringify({ version: s.next.fw, code: s.next.code, size: 880000, md5: '0123456789abcdef0123456789abcdef', built: '2026-09-24T12:00:00Z' }));
@@ -1623,7 +1634,7 @@ document.querySelectorAll('details.card').forEach(d => {
 });
 $('p2Box').addEventListener('toggle', () => { if ($('p2Box').open) { refreshInfo(); pollStart(); } });
 window.addEventListener('beforeunload', e => { if (isDirty() && !FW.reloading) { e.preventDefault(); e.returnValue = ''; } });
-// Web fonts after load, never blocking (the car's Wi-Fi has no internet)
+// Web fonts after load, never blocking (no internet on the car Wi-Fi)
 window.addEventListener('load', () => setTimeout(() => {
   const l = document.createElement('link');
   l.rel = 'stylesheet';
