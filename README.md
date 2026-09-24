@@ -16,6 +16,7 @@ Minden módszerre igaz:
 - 🛑 Frissíteni csak **álló autóval, alapjáraton vagy leállított motorral** lehet (max. **1500 RPM**), különben a vezérlő elutasítja.
 - 🛡️ A flash írása alatt a szikraelvétel teljesen tiltva van (a gyári gyújtás 100%-ban működik).
 - ✅ Sérült vagy félbeszakadt letöltés nem kerül telepítésre (MD5 ellenőrzés) – ilyenkor a régi firmware fut tovább.
+- ↩️ Automatikus visszaállás: az új firmware-t a vezérlő csak akkor tartja meg, ha az első indulás után ~10 mp-ig rendben fut a Wi-Fi-vel (vagy betölt a dashboard). Ha közben lefagy vagy újraindul, a következő indításkor magától a régi verzió indul vissza – nem kell kiszerelni.
 - ℹ️ Az 1. és 2. mód az új firmware része: a régebbi firmware-ről először a 3. vagy a 4. móddal frissíts.
 
 ### 1. ⚡ Egy koppintás a telefon mobilnetén keresztül (ajánlott)
