@@ -1185,8 +1185,9 @@ void setup() {
 // MAIN LOOP
 // =========================================================================================
 void loop() {
-  // 1. Engine control step (RPM, launch state machine, spark cut)
-  engineSetInhibit(otaIsBusy());
+  // 1. Engine control step (no-op: the engine runs from its ISRs). The OTA module sets and
+  //    clears the engine inhibit itself on every transition; setting it from here as well
+  //    could race with the OTA task (core 0) and briefly clear an inhibit it just set.
   engineUpdate();
 
   // 2. Firmware update state machine

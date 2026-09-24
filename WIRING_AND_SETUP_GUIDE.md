@@ -248,7 +248,7 @@ A `83 x 54 mm`-es próbapanelen így helyezd el az alkatrészeket a legtömöreb
    * Csatlakozz a telefonoddal a `Swift-PopsAndBangs` Wi-Fi-re (jelszó: `swift123`).
    * Nyisd meg a böngészőben: `http://192.168.4.1`.
    * A fejlécben megjelenik a „KAPCSOLÓDVA” állapot és a firmware verziója.
-   * **Padteszt:** a Biztonság kártyán legyen bekapcsolva a **Rendszer élesítve** főkapcsoló. Válts **SHOW MÓD**-ra, és tartsd nyomva a nagy gombot. Álló motornál (legalább 2 mp gyújtásjel nélkül) az ESP32 kék LED-je világít, és a panelen a tiltás kimenet aktív. Amint jön egy gyújtásjel, a padteszt azonnal leáll. A GPIO 23 kapcsoló padtesztet nem indít.
+   * **Padteszt:** a Biztonság kártyán legyen bekapcsolva a **Rendszer élesítve** főkapcsoló. Válts **SHOW MÓD**-ra, és tartsd nyomva a nagy gombot. Álló motornál (legalább 2 mp gyújtásjel nélkül) az ESP32 kék LED-je világít, és a panelen a tiltás kimenet aktív (legfeljebb ~10 mp-ig, utána engedd el és nyomd meg újra). Padteszt közben a motor nem indul, ezért indítás előtt engedd el a gombot. A GPIO 23 kapcsoló padtesztet nem indít.
 5. **Autóba szerelés**:
    * Kösd be a 4 szálat a Swiftbe.
    * Indítsd el a motort alapjáraton: a telefonos kijelzőn azonnal látnod kell a gyári $\sim 850\text{ RPM}$ alapjáratot.
