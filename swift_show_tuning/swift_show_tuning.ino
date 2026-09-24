@@ -159,7 +159,7 @@ static const char* const PROFILE_FACTORY_NAME[PROFILE_COUNT] = {"UTCA", "SHOW", 
 
 static TuningConfig g_profCfg[PROFILE_COUNT];                 // saved values of each slot (armed unused)
 static char g_profName[PROFILE_COUNT][PROFILE_NAME_BYTES + 1];
-static uint8_t g_profActive = 1;
+static uint8_t g_profActive = 0;
 static portMUX_TYPE g_profMux = portMUX_INITIALIZER_UNLOCKED; // names / active index for other tasks
 
 // Pending NVS writes (all go through serviceSave(): no-cut rule, <= 1 s deferral)
@@ -311,7 +311,7 @@ void loadConfigFromNVS() {
     g_profCfg[i] = profileFactory(i);
     strcpy(g_profName[i], PROFILE_FACTORY_NAME[i]);
   }
-  g_profActive = 1;
+  g_profActive = 0;   // fresh install (nothing saved yet): UTCA, the discreet profile
   if (prefs.begin(NVS_NAMESPACE, true)) {  // read-only; fails (-> factory values) on first boot
     uint8_t schema = prefs.getUChar(NVS_SCHEMA_KEY, 0);
     armed = prefs.getBool("armed", armed);

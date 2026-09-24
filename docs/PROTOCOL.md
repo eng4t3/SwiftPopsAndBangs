@@ -89,7 +89,8 @@ Names: 1–12 characters (UTF-8, Hungarian accents allowed, max 24 bytes). The f
 control characters, `"` and `\`, and trims surrounding spaces; an empty result keeps the old name.
 
 Migration from 2.0/2.1 (no profile data in NVS yet): the previously saved config goes into
-slot 1 (`SHOW`), which becomes active; slots 0 and 2 get their factory values.
+slot 1 (`SHOW`), which becomes active; slots 0 and 2 get their factory values. A fresh install with
+no saved settings at all starts with slot 0 (`UTCA`) active.
 
 Protocol additions:
 
