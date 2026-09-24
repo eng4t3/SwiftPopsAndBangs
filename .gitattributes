@@ -1,0 +1,2 @@
+# The dashboard is compiled into flash: keep LF so Windows checkouts do not add  bytes
+swift_show_tuning/web_ui.h text eol=lf
