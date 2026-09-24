@@ -66,6 +66,13 @@
 // are written from there (a pending capture whose samples are about to be overwritten is
 // dropped and counted).
 //
+// Switch (setting `enabled`, NVS swlog/en, POST /api/log/config): off = no flash program or erase
+// at all, except the NVS write of the setting itself and of a clear epoch (both under the erase
+// rule; a pending value is kept until written). Switching off drops the open window and pending
+// captures and ends the drive where the last record was written (no gap record); switching on
+// again continues the same boot's drive in a new sector with a DRV_GAP record covering the pause
+// (lost = samples not logged). The RAM ring, live.csv, lists, downloads and clear keep working.
+//
 // Isolation: the logger only READS engine state (short critical sections inside the engine
 // API). Allocation, partition or flash failures degrade the logger, never the engine.
 // =========================================================================================
@@ -387,7 +394,11 @@ static FlashWin g_wWin = {};                       // sampler task
 static uint8_t g_wRec[LOG_PAGE_SIZE];              // sampler task record buffer
 static uint32_t g_lastProgMs = 0, g_lastEraseMs = 0;
 static bool g_flashOpSinceSample = false;
-static bool g_nvsDirty = false, g_capIdDirty = false;
+static bool g_nvsBootDirty = false, g_nvsClrDirty = false, g_nvsEnDirty = false, g_capIdDirty = false;
+static volatile bool g_enabled = true;             // setting: changed by the HTTP handler under g_mtx
+static bool g_enApplied = true;                    // state the sampler task has switched to
+static bool g_pauseActive = false;                 // the drive was logging when switched off
+static uint32_t g_pauseSeq = 0, g_pauseFromMs = 0; // first sample not logged
 static uint32_t g_nvsLastMs = 0;
 
 // Index
@@ -1178,19 +1189,34 @@ static uint8_t captureStep() {
 }
 
 // ---- Erases / NVS ------------------------------------------------------------------------------
-static void persistNvs() {
+// Writes the dirty NVS values. `full` = logging enabled: the boot counter and the capture-id
+// counter too; while disabled only the setting itself and a clear epoch are written. Flags are
+// cleared only after a successful write (a pending value is retried).
+static void persistNvs(bool full) {
   Preferences p;
-  if (p.begin("swlog", false)) {
-    if (p.getUInt("boot", 0) != g_boot) p.putUInt("boot", g_boot);
-    if (p.getUInt("clr", 0) != g_clearSeq) p.putUInt("clr", g_clearSeq);
-    if (p.getUInt("capid", 0) < g_nextCapId) p.putUInt("capid", g_nextCapId);
+  bool ok = p.begin("swlog", false);
+  if (ok) {
+    uint8_t en = g_enabled ? 1 : 0;
+    if (g_nvsEnDirty && p.getUChar("en", 1) != en) ok = p.putUChar("en", en) != 0 && ok;
+    if (g_nvsClrDirty && p.getUInt("clr", 0) != g_clearSeq) ok = p.putUInt("clr", g_clearSeq) != 0 && ok;
+    if (full && g_nvsBootDirty && p.getUInt("boot", 0) != g_boot) ok = p.putUInt("boot", g_boot) != 0 && ok;
+    if (full && g_capIdDirty && p.getUInt("capid", 0) < g_nextCapId) ok = p.putUInt("capid", g_nextCapId) != 0 && ok;
     p.end();
   }
-  g_nvsDirty = false;
-  g_capIdDirty = false;
+  if (ok) {
+    g_nvsEnDirty = g_nvsClrDirty = false;
+    if (full) g_nvsBootDirty = g_capIdDirty = false;
+  }
   g_nvsLastMs = millis();
   g_lastEraseMs = g_nvsLastMs | 1;   // counts as an erase-class operation
   g_flashOpSinceSample = true;
+}
+
+static inline bool loggingOn() { return g_flashOk && g_enabled && g_enApplied; }
+
+static bool nvsPending(uint32_t now) {
+  if (g_nvsEnDirty || g_nvsClrDirty) return true;
+  return loggingOn() && (g_nvsBootDirty || (g_capIdDirty && now - g_nvsLastMs >= LOG_NVS_CAPID_MS));
 }
 
 // Accounting before a drive sector is recycled: its samples / gaps leave the drive's index entry.
@@ -1248,15 +1274,16 @@ static bool eraseCandidate(uint8_t ri, uint16_t* sec) {
 
 static bool eraseNeeded(uint32_t now) {
   uint16_t s;
-  return g_nvsDirty || (g_capIdDirty && now - g_nvsLastMs >= LOG_NVS_CAPID_MS) ||
-         eraseCandidate(LOG_REGION_DRIVE, &s) || eraseCandidate(LOG_REGION_CAP, &s);
+  return nvsPending(now) ||
+         (loggingOn() && (eraseCandidate(LOG_REGION_DRIVE, &s) || eraseCandidate(LOG_REGION_CAP, &s)));
 }
 
-static void eraseStep(uint32_t now) {
-  if (g_nvsDirty || (g_capIdDirty && now - g_nvsLastMs >= LOG_NVS_CAPID_MS)) {
-    persistNvs();
+static void eraseStep(uint32_t now) {   // holds g_mtx
+  if (nvsPending(now)) {
+    persistNvs(loggingOn());
     return;
   }
+  if (!loggingOn()) return;   // switched off: no sector erases
   for (uint8_t ri = LOG_REGION_DRIVE;; ri = LOG_REGION_CAP) {   // drive pool first
     uint16_t s;
     if (eraseCandidate(ri, &s)) {
@@ -1304,39 +1331,89 @@ static void applyClear() {   // holds g_mtx; the handler already reset the index
   g_drvOurs = false;
   g_gapPending = false;
   while (g_pendN) pendingPop();
-  g_nvsDirty = true;
+  g_pauseActive = false;   // the drive before the clear is forgotten: no pause gap after it
+  g_nvsClrDirty = true;
+}
+
+// Applies a change of `enabled` (sampler task). Retried next tick if the lock is busy.
+static void applyEnabledChange() {
+  bool en = g_enabled;
+  if (en == g_enApplied || !takeMutex(pdMS_TO_TICKS(2))) return;
+  en = g_enabled;
+  if (!en) {
+    if (g_win.open) {   // automatic capture in progress: discarded
+      g_win.open = false;
+      tbRelease(g_win.tb);
+    }
+    while (g_pendN) pendingPop();   // pending captures are discarded (not counted in `dropped`)
+    portENTER_CRITICAL(&g_idMux);
+    g_snapReq = 0;
+    portEXIT_CRITICAL(&g_idMux);
+    // The drive ends at its last written record; the unwritten backlog is not logged.
+    DrvIdx* d = drvFind(g_boot);
+    g_pauseActive = g_drvOurs && d && d->n > 0;
+    g_pauseSeq = g_drvNext;
+    LogSample s;
+    g_pauseFromMs = ringGet(g_drvNext, s) ? s.tMs : millis();
+    g_drvNext = g_head;
+    g_gapPending = false;
+    g_drvOurs = false;   // switching on again opens a new sector (DRV_INFO with the config of then)
+    g_drvNeedInfo = false;
+    g_drvBlocked = false;
+  } else {
+    uint32_t head = g_head;
+    if (g_pauseActive && drvFind(g_boot) && head > g_pauseSeq) {   // documented pause in the same drive
+      LogSample s;
+      g_gap.fromMs = g_pauseFromMs;
+      g_gap.toMs = ringGet(head - 1, s) ? s.tMs : millis();
+      g_gap.lost = head - g_pauseSeq;
+      g_gapPending = true;
+    }
+    g_pauseActive = false;
+    g_drvNext = head;
+    g_unsyncN = 0;
+  }
+  g_enApplied = en;
+  giveMutex();
 }
 
 static void flashWork(uint32_t now) {
-  if (!g_flashOk) return;
-  driveNoteLoss(now);
-  pendingNoteLoss();
   if (g_clearReq && takeMutex(pdMS_TO_TICKS(5))) {
     applyClear();
     giveMutex();
   }
+  bool on = loggingOn();
+  if (on) {
+    driveNoteLoss(now);
+    pendingNoteLoss();
+  } else if (!g_enApplied || !g_flashOk) {
+    g_drvNext = g_head;   // nothing is logged: no backlog, no bogus gap later
+  }                       // (a switch-off not applied yet keeps g_drvNext for the pause record)
   if (otaIsBusy()) {   // pause everything while the firmware is being written
     g_writeAllowed = false;
     return;
   }
   EngineTelemetry t = engineGetTelemetry();
-  g_writeAllowed = progSafe(now, t);
-  for (int op = 0; op < LOG_PROG_PER_TICK; op++) {
+  g_writeAllowed = on && progSafe(now, t);
+  for (int op = 0; on && op < LOG_PROG_PER_TICK; op++) {
     if (op) vTaskDelay(pdMS_TO_TICKS(LOG_PROG_GAP_MS));
     now = millis();
     if ((now - g_lastProgMs) < LOG_PROG_GAP_MS) break;
     t = engineGetTelemetry();   // fresh, right before the program
-    if (!progSafe(now, t) || !g_flashOk) break;
+    if (!progSafe(now, t)) break;
     if (!takeMutex(pdMS_TO_TICKS(2))) break;
     if (g_clearReq) applyClear();
-    uint8_t res = driveStep(now);
-    if (res != OP_DONE) res = captureStep();
+    uint8_t res = OP_NONE;
+    if (loggingOn()) {   // re-checked under the lock: POST /api/log/config switches under it
+      res = driveStep(now);
+      if (res != OP_DONE) res = captureStep();
+    }
     giveMutex();
     if (res != OP_DONE) break;
   }
   now = millis();
   t = engineGetTelemetry();
-  if (g_flashOk && eraseSafe(now, t) && eraseNeeded(now) && takeMutex(pdMS_TO_TICKS(2))) {
+  if (eraseSafe(now, t) && eraseNeeded(now) && takeMutex(pdMS_TO_TICKS(2))) {
     eraseStep(now);
     giveMutex();
   }
@@ -1719,7 +1796,8 @@ static void sampleOnce(uint32_t now) {
     g_cutRunStart = 0;
   }
 
-  if (g_flashOk) {
+  applyEnabledChange();
+  if (g_flashOk && g_enApplied && g_enabled) {
     // ---- launch: ARMED ... OFF + 3 s
     uint8_t ls = t.launchState, pls = g_prevLaunch;
     if (ls != LAUNCH_OFF && pls == LAUNCH_OFF) {
@@ -2403,24 +2481,24 @@ static bool argU32(const char* name, uint32_t& v) {
 }
 
 static void handleStatus() {
-  char body[420];
+  char body[460];
   uint16_t capPool = 0, drvPool = 0;
   if (g_flashOk && g_secSeq) {
     capPool = regPool(g_rg[LOG_REGION_CAP]);
     drvPool = regPool(g_rg[LOG_REGION_DRIVE]);
   }
-  bool gapNow = g_flashOk && (g_drvBlocked || (g_lossSeen && millis() - g_lastLossMs < 5000));
+  bool gapNow = loggingOn() && (g_drvBlocked || (g_lossSeen && millis() - g_lastLossMs < 5000));
   uint32_t backlog = g_head - g_drvNext;
   snprintf(body, sizeof(body),
-           "{\"ok\":%s,\"flash\":%s,\"capacity\":%lu,\"captures\":%u,\"drives\":%u,\"pending\":%u,\"dropped\":%lu,"
+           "{\"ok\":%s,\"enabled\":%s,\"flash\":%s,\"capacity\":%lu,\"captures\":%u,\"drives\":%u,\"pending\":%u,\"dropped\":%lu,"
            "\"poolFree\":{\"cap\":%u,\"drive\":%u},\"writing\":%s,\"gapNow\":%s,\"heap\":%u,\"boot\":%lu,"
            "\"ringSec\":%lu,\"backlog\":%lu,\"ramBytes\":%lu,\"stackFree\":%u,\"flashErrors\":%lu,"
            "\"scanErrors\":%lu}",
-           g_ring ? "true" : "false", g_flashOk ? "true" : "false", (unsigned long)(g_part ? g_part->size : 0), (unsigned)g_capN,
+           g_ring ? "true" : "false", g_enabled ? "true" : "false", g_flashOk ? "true" : "false", (unsigned long)(g_part ? g_part->size : 0), (unsigned)g_capN,
            (unsigned)g_drvN, (unsigned)g_pendN, (unsigned long)g_dropped, (unsigned)capPool, (unsigned)drvPool,
            (g_flashOk && g_writeAllowed) ? "true" : "false", gapNow ? "true" : "false", (unsigned)ESP.getFreeHeap(),
            (unsigned long)g_boot, (unsigned long)(g_ringCap * LOG_SAMPLE_MS / 1000),
-           (unsigned long)(g_flashOk ? backlog : 0), (unsigned long)g_ramBytes,
+           (unsigned long)(loggingOn() ? backlog : 0), (unsigned long)g_ramBytes,
            (unsigned)(g_task ? uxTaskGetStackHighWaterMark(g_task) : 0), (unsigned long)g_flashErrors,
            (unsigned long)g_scanErrors);
   sendJson(200, body);
@@ -2570,6 +2648,10 @@ static void handleSnap() {
     sendJson(200, "{\"ok\":false,\"msg\":\"Nincs használható napló-partíció\"}");
     return;
   }
+  if (!g_enabled) {
+    sendJson(200, "{\"ok\":false,\"msg\":\"A naplózás ki van kapcsolva\"}");
+    return;
+  }
   if (g_pendN >= LOG_MAX_PENDING) {
     sendJson(200, "{\"ok\":false,\"msg\":\"Két mentés már írásra vár, próbáld pár másodperc múlva\"}");
     return;
@@ -2586,6 +2668,32 @@ static void handleSnap() {
   char body[64];
   snprintf(body, sizeof(body), "{\"ok\":true,\"id\":%lu}", (unsigned long)id);
   sendJson(200, body);
+}
+
+// POST /api/log/config  enabled=1|0 (x-www-form-urlencoded). Applies at once; the NVS write
+// follows the erase rule (the value stays pending until it is written).
+static void handleConfig() {
+  if (!otaRequestAllowed()) {
+    sendJson(403, "{\"ok\":false,\"msg\":\"Elutasítva: a kérés egy másik weboldalról érkezett\"}");
+    return;
+  }
+  String v = g_srv->hasArg("enabled") ? g_srv->arg("enabled") : String();
+  v.trim();
+  if (v != "1" && v != "0") {
+    sendJson(200, "{\"ok\":false,\"msg\":\"Hibás kérés: enabled = 1 vagy 0\"}");
+    return;
+  }
+  if (!g_task || !takeMutex(pdMS_TO_TICKS(500))) {
+    sendJson(200, "{\"ok\":false,\"msg\":\"A naplózó most nem érhető el, próbáld újra\"}");
+    return;
+  }
+  bool en = (v == "1");
+  if (en != g_enabled) {
+    g_enabled = en;       // flash writes stop / resume at once (the writer checks under this lock)
+    g_nvsEnDirty = true;
+  }
+  giveMutex();
+  sendJson(200, en ? "{\"ok\":true,\"enabled\":true}" : "{\"ok\":true,\"enabled\":false}");
 }
 
 static void handleClear() {
@@ -2632,9 +2740,12 @@ void loggerBegin(WebServer& server) {
       nvsBoot = p.getUInt("boot", 0);
       g_clearSeq = p.getUInt("clr", 0);
       nvsCapId = p.getUInt("capid", 0);
+      g_enabled = p.getUChar("en", 1) != 0;
       p.end();
     }
   }
+
+  g_enApplied = g_enabled;
 
   // Flash: the spiffs data partition, raw
   g_part = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS, nullptr);
@@ -2693,6 +2804,7 @@ void loggerBegin(WebServer& server) {
   server.on("/api/log/live.csv", HTTP_GET, handleLive);
   server.on("/api/log/snap", HTTP_POST, handleSnap);
   server.on("/api/log/clear", HTTP_POST, handleClear);
+  server.on("/api/log/config", HTTP_POST, handleConfig);
 
   if (!g_ring) {
     for (int i = 0; i < LOG_TRACE_BUFS; i++) {
@@ -2709,7 +2821,7 @@ void loggerBegin(WebServer& server) {
   if (g_part) {
     scanFlash(nvsBoot, nvsCapId);
     g_flashOk = true;
-    g_nvsDirty = true;   // boot counter (persisted at the first erase-safe moment)
+    g_nvsBootDirty = true;   // boot counter (persisted at the first erase-safe moment while enabled)
     g_nvsLastMs = millis();
   }
 
@@ -2725,6 +2837,7 @@ void loggerBegin(WebServer& server) {
   Serial.printf("[LOG] boot %lu, ring %lu s, RAM %lu B, free heap %u -> %u (min block %u)\n", (unsigned long)g_boot,
                 (unsigned long)(g_ringCap * LOG_SAMPLE_MS / 1000), (unsigned long)g_ramBytes, (unsigned)heap0,
                 (unsigned)ESP.getFreeHeap(), (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+  if (!g_enabled) Serial.println("[LOG] logging switched OFF (setting): RAM ring only, no flash writes");
   if (g_flashOk) {
     Serial.printf("[LOG] flash %u sectors (capture %u, drive %u), pool cap %u / drive %u, %u captures, %u drives, "
                   "scan %lu ms, %lu bad records\n",

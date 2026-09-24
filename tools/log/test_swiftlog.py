@@ -176,6 +176,20 @@ class FirmwareParity(unittest.TestCase):
         self.assertIn('"# gap from_ms=%lu to_ms=%lu lost=%lu\\n"', drv)
         self.assertIn('"# config%s\\n"', drv)
 
+    def test_routes_and_status_keys_documented(self):
+        routes = re.findall(r'server\.on\("(/api/log/[\w./]+)", HTTP_(GET|POST)', CPP)
+        self.assertEqual(len(routes), 8)
+        for path, method in routes:
+            self.assertIn("`%s %s" % (method, path), PROTOCOL, path)
+        status = cpp_function("handleStatus")
+        keys = re.findall(r'\\"(\w+)\\":', status)
+        self.assertIn("enabled", keys)
+        doc = PROTOCOL.split("`GET /api/log/status`", 1)[1].splitlines()[0]
+        for k in keys:
+            self.assertIn('"%s":' % k, doc, k)
+        self.assertIn('"A naplózás ki van kapcsolva"', PROTOCOL)
+        self.assertIn('\\"A naplózás ki van kapcsolva\\"', CPP)
+
     def test_capture_type_names(self):
         m = re.search(r"CAP_TYPE_NAME\[CT_COUNT\]\s*=\s*\{([^}]*)\}", CPP)
         self.assertEqual(re.findall(r"\"(\w+)\"", m.group(1)), sl.CAP_TYPES)
