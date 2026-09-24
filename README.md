@@ -7,23 +7,45 @@ ESP32 alapú, Wi-Fi Web Dashboarddal vezérelhető motorsport show-tuning és gy
 
 ---
 
-## 📱 Közvetlen Letöltés Telefonra (Web OTA Frissítéshez)
+## 📲 Firmware Frissítés (a legegyszerűbbtől)
 
-Ha a vezérlő már be van szerelve a kocsiba, nem kell kiszerelned! Csak töltsd le a legújabb lefordított firmware-t közvetlenül a telefonodra:
+Ha a vezérlő már be van szerelve a kocsiba, nem kell kiszerelned! Az autó Wi-Fi hálózata:
+- **SSID:** `Swift-PopsAndBangs` • **Jelszó:** `swift123` • **Dashboard:** `http://192.168.4.1`
 
-👉 **[📥 firmware.bin LETÖLTÉSE (Közvetlen link)](https://raw.githubusercontent.com/eng4t3/SwiftPopsAndBangs/main/firmware.bin)**  
-*(Vagy a GitHub felületen a `firmware.bin` fájlra kattintva a **Download raw file** gombbal.)*
+Minden módszerre igaz:
+- 🛑 Frissíteni csak **álló autóval, alapjáraton vagy leállított motorral** lehet (max. **1500 RPM**), különben a vezérlő elutasítja.
+- 🛡️ A flash írása alatt a szikraelvétel teljesen tiltva van (a gyári gyújtás 100%-ban működik).
+- ✅ Sérült vagy félbeszakadt letöltés nem kerül telepítésre (MD5 ellenőrzés) – ilyenkor a régi firmware fut tovább.
+- ↩️ Automatikus visszaállás: az új firmware-t a vezérlő csak akkor tartja meg, ha az első indulás után ~10 mp-ig rendben fut a Wi-Fi-vel (vagy betölt a dashboard). Ha közben lefagy vagy újraindul, a következő indításkor magától a régi verzió indul vissza – nem kell kiszerelni.
+- ℹ️ Az 1. és 2. mód az új firmware része: a régebbi firmware-ről először a 3. vagy a 4. móddal frissíts.
 
-### 📲 Frissítés menete telefonról (3 lépés):
-1. **Töltsd le** a fenti `firmware.bin` fájlt a telefonod *Letöltések* mappájába.
-2. **Csatlakozz** az autó Wi-Fi hálózatára:
-   - **SSID:** `Swift-PopsAndBangs`
-   - **Jelszó:** `swift123`
-   - Nyisd meg a böngészőt: `http://192.168.4.1`
-3. **Telepítsd vezeték nélkül:**
-   - Görgess le a **„📡 Vezeték nélküli frissítés (OTA)”** szekcióhoz.
-   - Koppints a **`📁 FIRMWARE (.BIN) KIVÁLASZTÁSA`** gombra, és válaszd ki a letöltött fájlt.
-   - Nyomd meg a zöld **`🚀 TELEPÍTÉS VEZETÉK NÉLKÜL`** gombot (~15 másodperc, automatikus újraindulás).
+### 1. ⚡ Egy koppintás a telefon mobilnetén keresztül (ajánlott)
+1. Kapcsold be a telefonon a **mobilnetet**, és csatlakozz az autó Wi-Fi-jére.
+2. Nyisd meg a dashboardot (`http://192.168.4.1`) és görgess a frissítés kártyához.
+3. A telefon a mobilneten letölti a GitHubról a legújabb `firmware.bin`-t, majd egy koppintásra átküldi a vezérlőnek (~15–30 mp, automatikus újraindulás).
+
+> Ha a telefon az autó Wi-Fi-jén nem éri el az internetet (egyes telefonok ilyenkor minden forgalmat a Wi-Fi-re küldenek), használd a 2. vagy a 3. módot.
+
+### 2. 📡 A vezérlő maga tölti le (otthoni Wi-Fi vagy telefonos hotspot)
+1. A dashboard frissítés kártyáján add meg **egyszer** egy internetes Wi-Fi nevét és jelszavát (otthoni router vagy egy telefon hotspotja). A vezérlő elmenti (a jelszót nem lehet visszaolvasni).
+2. **Frissítés keresése:** a vezérlő rácsatlakozik (max. 20 mp), elolvassa a GitHubon a `version.json`-t, és kiírja, van-e újabb verzió.
+3. **Telepítés:** a vezérlő közvetlenül a GitHubról (titkosított, tanúsítvánnyal ellenőrzött HTTPS kapcsolaton) letölti és beírja a `firmware.bin`-t, majd újraindul.
+
+- Az autó Wi-Fi-je közben is él, de a vezérlő átáll az internetes Wi-Fi csatornájára, ezért a telefon pár másodpercre lecsatlakozhat – csatlakozz vissza, a folyamat a háttérben fut tovább.
+- **Automatikus ellenőrzés indításkor** (opcionális, alapból ki): ha be van kapcsolva és van mentett Wi-Fi, bekapcsolás után egyszer megnézi a GitHubot (magától nem telepít), így a dashboard jelzi, ha új verzió érhető el.
+- Telefonos hotspotnál: ha a telefonod nem tud egyszerre hotspot lenni és az autó Wi-Fi-jén maradni, a hotspotot adja egy másik telefon (vagy használd az otthoni Wi-Fit).
+
+### 3. 📁 Kézi feltöltés (.bin fájl)
+1. Töltsd le a telefonodra: 👉 **[📥 firmware.bin LETÖLTÉSE (Közvetlen link)](https://raw.githubusercontent.com/eng4t3/SwiftPopsAndBangs/main/firmware.bin)**
+2. Csatlakozz az autó Wi-Fi-jére, nyisd meg a `http://192.168.4.1`-et, a frissítés kártyán válaszd ki a letöltött fájlt, és indítsd a telepítést (~15 mp, automatikus újraindulás).
+- Tartalék feltöltő oldal (JavaScript nélkül is működik): `http://192.168.4.1/update`
+
+### 4. 💻 Laptopról, vezeték nélkül (fejlesztőknek)
+Csatlakoztasd a laptopot az autó Wi-Fi-jére (`Swift-PopsAndBangs`), majd:
+```powershell
+pio run -e esp32dev_wifi -t upload
+```
+Lefordítja a firmware-t, és a Windows 10/11 beépített `curl`-jével feltölti a `http://192.168.4.1/update` címre, MD5 ellenőrzéssel. Más IP-cím esetén: `--upload-port 192.168.x.y`.
 
 ---
 
@@ -84,12 +106,23 @@ Ha a vezérlő már be van szerelve a kocsiba, nem kell kiszerelned! Csak tölts
 ## 💻 Fordítás és Feltöltés (PlatformIO)
 
 ```powershell
-# Fordítás
-platformio run
+# Fordítás (a firmware.bin és a version.json a repo gyökerébe is bekerül)
+pio run
 
 # Feltöltés USB-n (ha szükséges)
-platformio run -t upload
+pio run -t upload
+
+# Feltöltés Wi-Fi-n (laptop az autó Wi-Fi-jén)
+pio run -e esp32dev_wifi -t upload
 ```
+
+### 🚀 Új verzió kiadása (egy parancs + push)
+1. **Emeld a verziót** a `swift_show_tuning/version.h`-ban: `FW_VERSION` (pl. `"2.1.0"`) és `FW_VERSION_CODE` (pl. `20100` = fő·10000 + al·100 + javítás). A vezérlők csak akkor ajánlják fel a frissítést, ha a `FW_VERSION_CODE` nagyobb a futónál.
+2. **`pio run`** – a `scripts/post_build.py` a repo gyökerébe másolja a `firmware.bin`-t, és megírja mellé a `version.json`-t (verzió, kód, méret, MD5, build idő). Figyelmeztet, ha elfelejtetted emelni a verziót.
+3. **Commit + push:** `firmware.bin` + `version.json` (és a forráskód) a `main` ágra.
+4. Kész: a GitHub pár percen belül (a raw.githubusercontent.com gyorsítótára ~5 perc) kiszolgálja az új fájlokat, onnantól a dashboard és a vezérlő is látja az új verziót.
+
+> ⚠️ A platform rögzítve van (`platformio/espressif32 @ 7.0.1` = Arduino-ESP32 2.0.17), hogy egy PlatformIO frissítés ne váltson csendben 3.x magra. A partíciós táblát (`default.csv`) ne módosítsd: a már beszerelt vezérlőkön OTA-val nem változtatható.
 
 ---
 
