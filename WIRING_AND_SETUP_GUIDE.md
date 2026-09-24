@@ -247,8 +247,8 @@ A `83 x 54 mm`-es próbapanelen így helyezd el az alkatrészeket a legtömöreb
 4. **Wi-Fi & Gomb Teszt**:
    * Csatlakozz a telefonoddal a `Swift-PopsAndBangs` Wi-Fi-re (jelszó: `swift123`).
    * Nyisd meg a böngészőben: `http://192.168.4.1`.
-   * A mutatón lefut a nyitó söprés (0 $\rightarrow$ 8000 $\rightarrow$ 0 RPM).
-   * Kapcsold be a **Master Arm**-ot, és tartsd nyomva a piros **🔥 2-STEP / FLAMES 🔥** gombot: az ESP32 kék LED-je és a panelen a tiltás kimenet aktívvá válik.
+   * A fejlécben megjelenik a „KAPCSOLÓDVA” állapot és a firmware verziója.
+   * **Padteszt:** a Biztonság kártyán legyen bekapcsolva a **Rendszer élesítve** főkapcsoló. Válts **SHOW MÓD**-ra, és tartsd nyomva a nagy gombot. Álló motornál (legalább 2 mp gyújtásjel nélkül) az ESP32 kék LED-je világít, és a panelen a tiltás kimenet aktív. Amint jön egy gyújtásjel, a padteszt azonnal leáll. A GPIO 23 kapcsoló padtesztet nem indít.
 5. **Autóba szerelés**:
    * Kösd be a 4 szálat a Swiftbe.
    * Indítsd el a motort alapjáraton: a telefonos kijelzőn azonnal látnod kell a gyári $\sim 850\text{ RPM}$ alapjáratot.

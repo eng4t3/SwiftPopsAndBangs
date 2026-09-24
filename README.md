@@ -52,41 +52,45 @@ Lefordítja a firmware-t, és a Windows 10/11 beépített `curl`-jével feltölt
 ## ✨ Főbb Funkciók
 
 1. **🏁 Rajtautomatika / 2-Step (Launch Control):**
-   - **Hands-Free mód:** Egyetlen érintéssel élesíthető (10 mp készenlét). Kuplung be, padlógáz $\to$ a beállított értéken (pl. 3800 RPM) dadog és lángol. A kuplung hirtelen felengedésekor (hajtáslánc terhelési beesés érzékelésekor) azonnal és automatikusan feloldja a tiltást a tökéletes kilövéshez!
-   - **Show mód:** Állóhelyzeti durrogtatás és tűzköpés haveroknak a gomb nyomva tartásával.
-   - **Hardveres kapcsoló (GPIO 23):** Kézifékre vagy kuplungpedál mikrokapcsolóra köthető.
+   - **Hands-Free mód:** Egyetlen érintéssel élesíthető (10 mp készenlét, visszaszámlálással). Kuplung be, padlógáz $	o$ a beállított értéken (pl. 3800 RPM) tart, dadog és lángol, amíg nyomod (max. 12 mp). A kuplung felengedésekor a terhelés lehúzza a fordulatot: ha a *kuplung-felengedés érzékenység* értékével (alapból 400 RPM) a limit alá esik és ott is marad, a tiltás ~0,1 mp-en belül megszűnik. A vezérlő csak a ténylegesen elsült szikrákból mér, így a saját tiltás okozta ingadozás nem oldja ki. Ha a kuplung előtt elveszed a gázt, a rajt befejeződik (újra kell élesíteni).
+   - **Show mód:** Állóhelyzeti durrogtatás és tűzköpés haveroknak a gomb nyomva tartásával. Ha a telefon kapcsolata megszakad, a vezérlő 0,6 mp-en belül magától elengedi a gombot.
+   - **Hardveres kapcsoló (GPIO 23):** Kézifékre vagy kuplungpedál mikrokapcsolóra köthető (20 ms pergésmentesítéssel). Padtesztet soha nem indít, így kinyomott kuplunggal is indul a motor.
 
 2. **⚡ Redline Rev Limiter (Maximális tiltás):**
-   - Gyári lassú üzemanyag-elvétel helyett villámgyors szikraelvétel (Bee*R limiter stílusú géppuskasorozat).
+   - Gyári lassú üzemanyag-elvétel helyett villámgyors szikraelvétel (Bee*R limiter stílusú géppuskasorozat), 100 RPM hiszterézissel.
+   - Ha a kiválasztott mintázat nem bírja megtartani a fordulatot (75 RPM-mel a limit fölé megy), kemény tiltásra vált. Az anti-flood a limitert soha nem kapcsolja ki.
 
 3. **💥 Overrun Decel Pops (Motorfék durrogás):**
-   - Gázelvételkor a motorféküzem alatt rövid szikravágásokat iktat be.
-   - **250 ms gyorsulási zár:** Gyorsítás közben nem vág bele a gyújtásba, csak valós gázelvételkor és tartós fordulatszám-esésnél aktiválódik.
+   - Gázelvételkor a motorféküzem alatt rövid (max. 1,2 mp) szikravágásokat iktat be.
+   - Csak valós, tartós fordulatszám-esésnél aktiválódik, friss mérések alapján. Újra gázadásra vagy 2100 RPM alatt azonnal leáll, és egy rajt / 2-step után 3 mp-ig nem kapcsol be.
 
-4. **🎵 5 Állítható Kipufogó Hangzás / Mintázat:**
-   - `0` - **Kemény tiltás (Hard Cut):** 100% vágás (klasszikus Bee*R stílus).
-   - `1` - **Lángcsóva (Flames):** 3 vágás / 1 szikra a hatalmas lángokhoz.
-   - `2` - **Durrogás (Gunfire):** Ritmikus lövések és ropogás.
-   - `3` - **AK-47 Sorozat:** Ultramagas frekvenciájú staccato géppuskahang.
-   - `4` - **💣 Ágyúlövés / Bomba:** 1.6 másodperces szünet padlógáznál (a kipufogó megtelik benzinnel), majd hirtelen szikravisszaadás $\to$ gigantikus dörrenés és tűzgolyó!
+4. **🎵 5 Állítható Kipufogó Hangzás / Mintázat** (gyújtásonként, a gyújtásjelhez szinkronizálva):
+   - `0` - **Kemény tiltás (Hard Cut):** 2–5 szikra kimarad, majd 1 gyújt, ebből méri a fordulatot (klasszikus Bee*R stílus).
+   - `1` - **Lángcsóva (Flames):** 3 kimarad / 1 gyújt a hatalmas lángokhoz.
+   - `2` - **Durrogás (Gunfire):** 2 kimarad / 1 gyújt: sűrű, mély lövések.
+   - `3` - **AK-47 Sorozat:** 1 kimarad / 1 gyújt: gyors staccato géppuskahang.
+   - `4` - **💣 Ágyúlövés / Bomba:** ~1,6 mp teljes tiltás (a kipufogó megtelik keverékkel), majd hirtelen szikravisszaadás $	o$ nagy dörrenés és tűzgolyó. 2500 RPM közelében korábban visszaadja a szikrát. Hands-free rajtnál kemény tiltásként működik.
+   - A tiltás mindig közvetlenül egy gyújtás után kapcsol, sosem a trafó töltése közben, így nincs rossz időben (korán) elsülő szikra.
 
 5. **🔥 Ghost Cam™ / V8 Alapjárati Dadogás:**
-   - Alapjáraton (650–1250 RPM) ritmikusan szikrát vesz el (forgó 5-ös ciklus: 4 henger gyújt, 1 kimarad).
+   - Stabil alapjáraton (650–1250 RPM) minden 5. szikrát elveszi (forgó ciklus, sosem kettőt egymás után).
    - Amerikai nagytengelyes V8 drag-motorok lusta, agresszív dadogását produkálja.
-   - Gázadásra (1250 RPM felett) automatikusan és észrevétlenül kikapcsol.
+   - Gázadáskor, elinduláskor és 1250 RPM felett automatikusan szünetel.
 
 6. **📊 Valós idejű Telemetria & Neon Web Dashboard:**
-   - 30 FPS sebességű kétirányú WebSocket kapcsolat.
-   - Analóg íves fordulatszámmérő mutatóval és digitális kijelzővel.
-   - Csúcsérték-memória (Peak RPM).
-   - Beépített részletes súgó és funkcióleírások modális ablakban.
+   - ~30 FPS sebességű kétirányú WebSocket kapcsolat, automatikus újracsatlakozással.
+   - Nagy digitális fordulatszám-kijelző vékony sávval (rajt- és redline-jelölővel), csúcsérték-memóriával.
+   - Mindig látszik, **mi tilt éppen** (2-STEP, RAJT, REDLINE, DURROGÁS, GHOST CAM, ANTI-FLOOD ZÁR…).
+   - Csoportosított, összecsukható beállítások, jelzés a nem mentett változásokról, beépített súgó.
+   - Diagnosztika autós teszteléshez: `http://192.168.4.1/api/diag`.
 
 7. **🛡️ Biztonsági Védelem & Memória:**
-   - **Trafó zavarszűrés:** 4000 µs hardveres zajzár és 4-ütemű görgetett átlagoló puffer a distributor holtjáték és zavarok ellen.
-   - **Szikraelvétel fordulatszám-kompenzáció:** Nem esik be a mutatott RPM szikravágás alatt sem.
-   - **Leállásvédelem (Anti-Flood):** Időkorlát a gyertyák beköpése ellen (állítható, vagy kikapcsolható).
-   - **Fail-safe tranzisztor logika:** Ha az ESP32 áramtalanítva van vagy újraindul, a tranzisztor lezár $\to$ a gyári gyújtás 100%-ban működik.
-   - **NVS Flash memória:** Minden beállítás automatikusan megőrződik gyújtáslevétel után is.
+   - **Valós idejű vezérlés:** a gyújtásjel-megszakítás és egy 10 kHz-es időzítő végzi a tiltást, így a Wi-Fi, az oldalbetöltés vagy a frissítés sosem akaszthatja meg.
+   - **Trafó zavarszűrés:** adaptív zajkapu (min. 3 ms, 10000 RPM-ig mér) a trafó utórezgései ellen.
+   - **Szikraelvétel fordulatszám-kompenzáció:** a kimaradt gyújtásokat a vezérlő számon tartja, így a mutatott RPM tiltás alatt sem esik be.
+   - **Leállásvédelem (Anti-Flood):** a 100%-os egybefüggő tiltást időben korlátozza (állítható, vagy kikapcsolható); a limiter közben is működik.
+   - **Fail-safe tranzisztor logika:** Ha az ESP32 áramtalanítva van, újraindul vagy frissít, a tranzisztor lezár $	o$ a gyári gyújtás 100%-ban működik.
+   - **NVS Flash memória:** A beállítások a **MENTÉS** gombbal íródnak a flash-be, és gyújtáslevétel után is megmaradnak.
 
 ---
 
