@@ -23,10 +23,13 @@
 //   crosses a 256-byte page, so each record is exactly one page program; the rest of a page
 //   that cannot hold the next record stays 0xFF. 0xFF at the first record position of a page
 //   = end of the written data. A bad CRC skips to the next page (torn write).
-//     0x01 DRV_INFO     u32 boot, char fw[12], CfgSnap (first record of every drive sector)
+//     0x01 DRV_INFO     u32 boot, char fw[12], CfgSnap (first record of every drive sector),
+//                       v2.2+: + NameField (profile name)
 //     0x02 DRV_SAMPLES  1..21 x LogSample (12 B)
 //     0x03 DRV_GAP      u32 from_ms (first lost sample), u32 to_ms (last lost), u32 lost
-//     0x10 CAP_BEGIN    CapMeta (120 B) + summary text (UTF-8, padded to 4)
+//     0x10 CAP_BEGIN    CapMeta (120 B) + summary text (UTF-8, padded to 4), v2.2+: + NameField
+//                       CfgSnap byte 12 = active profile + 1 (0 = unknown / older firmware);
+//                       NameField = u8 length + 24 bytes UTF-8 + 3 pad (absent in 2.1 records)
 //     0x11 CAP_SAMPLES  u32 capture id + 1..20 x LogSample
 //     0x12 CAP_TRACE    u32 capture id + 1..31 x EngineTraceEvent (8 B)
 //     0x13 CAP_END      u32 id, u16 samples, u16 trace events, u32 CRC-32 of all sample and
@@ -89,6 +92,7 @@
 #include "engine_control.h"
 #include "ota_update.h"
 #include "version.h"
+#include "profiles.h"
 
 // ---- Tunables -----------------------------------------------------------------------------
 #define LOG_SAMPLE_MS           40      // 25 Hz
@@ -201,7 +205,8 @@ struct CfgSnap {           // config snapshot, 16 bytes
   uint8_t  cutPattern;
   uint8_t  flags;          // bit0 armed, bit1 decelPops, bit2 ghostCam
   uint16_t maxCutCs;       // maxCutSeconds * 100, 0 = unlimited
-  uint32_t reserved;
+  uint8_t  profile1;       // active settings profile + 1 (0 = unknown: written before v2.2)
+  uint8_t  reserved[3];
 };
 static_assert(sizeof(CfgSnap) == 16, "config snapshot");
 
@@ -211,7 +216,14 @@ struct DiagSnap {          // EngineDiag at the trigger, 36 bytes
 };
 static_assert(sizeof(DiagSnap) == 36, "diag snapshot");
 
-#define LOG_SUM_MAX 132
+struct NameField {         // profile name (v2.2) after CAP_BEGIN's summary and after DrvInfo, 28 bytes
+  uint8_t len;             // bytes (older records have no NameField at all)
+  char    name[PROFILE_NAME_BYTES];
+  uint8_t pad[3];
+};
+static_assert(sizeof(NameField) == 28, "name field");
+
+#define LOG_SUM_MAX 84    // BEGIN (4 + 120 + 84 + 28 = 236 B) always fits the first page of a sector
 struct CapMeta {           // CAP_BEGIN payload head, 120 bytes (+ sum text)
   uint32_t id;
   uint32_t boot;
@@ -231,7 +243,8 @@ struct CapMeta {           // CAP_BEGIN payload head, 120 bytes (+ sum text)
   char     fw[12];
 };
 static_assert(sizeof(CapMeta) == 120, "capture meta");
-static_assert(sizeof(CapMeta) + LOG_SUM_MAX == LOG_REC_MAX_PAYLOAD, "BEGIN record fits one page");
+static_assert(LOG_REC_HDR + sizeof(CapMeta) + LOG_SUM_MAX + sizeof(NameField) == LOG_PAGE_SIZE - LOG_SECTOR_HDR,
+              "BEGIN fits the first page of a sector (no page is ever skipped empty)");
 
 struct DrvInfo { uint32_t boot; char fw[12]; CfgSnap cfg; };
 static_assert(sizeof(DrvInfo) == 32, "drive info");
@@ -309,12 +322,14 @@ struct Window {
   uint32_t traceSeq, unsyncs, trigRpm, fullCutMs;
   CfgSnap  cfg;
   DiagSnap diag;
+  char     profName[PROFILE_NAME_BYTES + 1];   // active profile at the trigger
 };
 
 enum : uint8_t { PH_BEGIN = 0, PH_SAMPLES, PH_TRACE, PH_END };
 struct Pending {
   CapMeta  meta;
   char     sum[LOG_SUM_MAX];
+  char     profName[PROFILE_NAME_BYTES + 1];
   uint32_t seq0;            // first sample (RAM ring sequence number)
   int8_t   tb;
   uint8_t  phase;
@@ -356,6 +371,7 @@ struct LogStream {
   // capture
   CapMeta  meta;
   char     sum[LOG_SUM_MAX + 1];
+  char     profName[PROFILE_NAME_BYTES + 1] = "";   // capture: at the trigger; drive: current DRV_INFO
   uint16_t gotN = 0, gotNT = 0;
   // drive
   DrvIdx   drv;
@@ -472,7 +488,28 @@ static CfgSnap makeCfg(const TuningConfig& c) {
   s.flags = (uint8_t)((c.armed ? 1 : 0) | (c.decelPops ? 2 : 0) | (c.ghostCam ? 4 : 0));
   float m = c.maxCutSeconds;
   s.maxCutCs = (m > 0.0f && m < 600.0f) ? (uint16_t)(m * 100.0f + 0.5f) : 0;
+  s.profile1 = (uint8_t)(profileActiveIndex() + 1);
   return s;
+}
+
+static NameField makeName(const char* name) {
+  NameField f;
+  memset(&f, 0, sizeof(f));
+  size_t n = strnlen(name, PROFILE_NAME_BYTES);
+  memcpy(f.name, name, n);
+  f.len = (uint8_t)n;
+  return f;
+}
+
+// Optional NameField at payload offset `off` (absent in records written before v2.2).
+static void readName(const uint8_t* payload, uint32_t plen, uint32_t off, char* out /* NAME_BYTES + 1 */) {
+  out[0] = '\0';
+  if (off + sizeof(NameField) > plen) return;
+  NameField f;
+  memcpy(&f, payload + off, sizeof(f));
+  size_t n = f.len <= PROFILE_NAME_BYTES ? f.len : 0;
+  memcpy(out, f.name, n);
+  out[n] = '\0';
 }
 
 static DiagSnap makeDiag(const EngineDiag& d) {
@@ -582,7 +619,12 @@ static bool nextRecord(FlashWin& w, uint32_t sec, uint16_t* off, uint8_t* rec, u
     }
     uint8_t type = p[0];
     if (type == 0xFF) {
-      if (o == firstInPage) {       // unwritten page: end of the data
+      if (o == firstInPage) {       // unwritten page: end of the data ...
+        const uint8_t* q = pageEnd < LOG_SECTOR_SIZE ? winPtr(w, sec * LOG_SECTOR_SIZE + pageEnd, 1) : nullptr;
+        if (q && *q != 0xFF) {      // ... unless the next page has data (torn write at this page's start)
+          o = pageEnd;
+          continue;
+        }
         *off = (uint16_t)o;
         return false;
       }
@@ -955,7 +997,8 @@ static uint8_t driveStep(uint32_t now) {
   Region& r = g_rg[LOG_REGION_DRIVE];
   uint32_t backlog = g_head - g_drvNext;
   if (!backlog && !g_gapPending) return OP_NONE;
-  uint16_t need = g_drvNeedInfo ? sizeof(DrvInfo) : (g_gapPending ? sizeof(DrvGap) : sizeof(LogSample));
+  uint16_t need = g_drvNeedInfo ? sizeof(DrvInfo) + sizeof(NameField)
+                                 : (g_gapPending ? sizeof(DrvGap) : sizeof(LogSample));
   if (!g_drvOurs || regRoom(r, need) < need) {
     uint8_t res = openSector(r, LOG_REGION_DRIVE);
     g_drvBlocked = (res == OP_BLOCKED);
@@ -975,8 +1018,12 @@ static uint8_t driveStep(uint32_t now) {
     inf.boot = g_boot;
     copyFw(inf.fw);
     inf.cfg = makeCfg(engineGetConfig());
+    char pn[PROFILE_NAME_BYTES + 1];
+    profileActiveName(pn, sizeof(pn));
+    NameField nf = makeName(pn);
     memcpy(g_wRec + LOG_REC_HDR, &inf, sizeof(inf));
-    if (writeRec(r, REC_DRV_INFO, sizeof(inf))) g_drvNeedInfo = false;
+    memcpy(g_wRec + LOG_REC_HDR + sizeof(inf), &nf, sizeof(nf));
+    if (writeRec(r, REC_DRV_INFO, sizeof(inf) + sizeof(nf))) g_drvNeedInfo = false;
     return OP_DONE;
   }
   if (g_gapPending) {
@@ -1084,7 +1131,7 @@ static uint8_t captureStep() {
   const TraceBuf* tb = (p.tb >= 0) ? g_tb[p.tb] : nullptr;
   uint32_t payload = 0;
   switch (p.phase) {
-    case PH_BEGIN: payload = sizeof(CapMeta) + pad4(p.meta.sumLen); break;
+    case PH_BEGIN: payload = sizeof(CapMeta) + pad4(p.meta.sumLen) + sizeof(NameField); break;
     case PH_SAMPLES: payload = 4 + sizeof(LogSample); break;
     case PH_TRACE: payload = 4 + sizeof(EngineTraceEvent); break;
     default: payload = sizeof(CapEnd); break;
@@ -1099,6 +1146,8 @@ static uint8_t captureStep() {
     memset(dst, 0, payload);
     memcpy(dst, &p.meta, sizeof(CapMeta));
     memcpy(dst + sizeof(CapMeta), p.sum, p.meta.sumLen);
+    NameField nf = makeName(p.profName);
+    memcpy(dst + sizeof(CapMeta) + pad4(p.meta.sumLen), &nf, sizeof(nf));
     uint16_t o = regPlace(r, LOG_REC_HDR + payload);
     if (writeRec(r, REC_CAP_BEGIN, (uint8_t)payload)) {
       p.beginSec = (uint16_t)r.head;
@@ -1469,6 +1518,7 @@ static void openWindow(uint8_t type, uint32_t startSeq, uint32_t now, uint32_t e
   g_win.endMs = endMs;
   g_win.trigRpm = rpm > 0 ? (uint32_t)rpm : 0;
   g_win.cfg = makeCfg(engineGetConfig());
+  profileActiveName(g_win.profName, sizeof(g_win.profName));
   g_win.diag = makeDiag(engineGetDiag());
   drainTrace();
 }
@@ -1698,6 +1748,7 @@ static void closeWindow(uint32_t lastSeq) {
   }
   p->meta.flags = g_win.flags;
   p->meta.cfg = g_win.cfg;
+  memcpy(p->profName, g_win.profName, sizeof(p->profName));
   p->meta.diag = g_win.diag;
   p->tb = g_win.tb;
   const TraceBuf* tb = (p->tb >= 0) ? g_tb[p->tb] : nullptr;
@@ -1715,6 +1766,7 @@ static void makeManual(uint32_t id, uint32_t now, uint32_t seq, int rpm) {
   Pending* p = newPending(id, CT_MANUAL, seq0, seq, now);
   if (!p) return;
   p->meta.cfg = makeCfg(engineGetConfig());
+  profileActiveName(p->profName, sizeof(p->profName));
   p->meta.diag = makeDiag(engineGetDiag());
   p->tb = tbAcquire();
   if (p->tb >= 0) {   // the engine's whole trace ring (the most recent events)
@@ -1929,14 +1981,16 @@ static int traceLine(const EngineTraceEvent& e, uint32_t refMs, char* b, size_t 
                   (unsigned)e.periodUs, (unsigned)e.info);
 }
 
-static void cfgFromSnap(const CfgSnap& c, char* b, size_t cap, const char* sep, const char* pre) {
-  // pre + key=value (+ sep) for every config key, in PROTOCOL.md order
+static void cfgFromSnap(const CfgSnap& c, const char* name, char* b, size_t cap, const char* sep, const char* pre) {
+  // pre + key=value (+ sep) for every config key, in PROTOCOL.md order, then the profile
+  // (-1 / empty name = unknown, data written before v2.2). profile_name is last: it may contain spaces.
   snprintf(b, cap,
            "%slaunchRpm=%u%s%slaunchDrop=%u%s%sredlineRpm=%u%s%scutPattern=%u%s%smaxCutSeconds=%u.%02u%s"
-           "%sdecelPops=%u%s%sdecelRpm=%u%s%sghostCam=%u%s%sarmed=%u%s",
+           "%sdecelPops=%u%s%sdecelRpm=%u%s%sghostCam=%u%s%sarmed=%u%s%sprofile=%d%s%sprofile_name=%s%s",
            pre, c.launchRpm, sep, pre, c.launchDrop, sep, pre, c.redlineRpm, sep, pre, c.cutPattern, sep, pre,
            c.maxCutCs / 100, c.maxCutCs % 100, sep, pre, (c.flags & 2) ? 1u : 0u, sep, pre, c.decelRpm, sep, pre,
-           (c.flags & 4) ? 1u : 0u, sep, pre, (c.flags & 1) ? 1u : 0u, sep);
+           (c.flags & 4) ? 1u : 0u, sep, pre, (c.flags & 1) ? 1u : 0u, sep, pre, (int)c.profile1 - 1, sep, pre,
+           c.profile1 ? name : "", sep);
 }
 
 static int diagLines(const DiagSnap& d, char* b, size_t cap) {
@@ -1985,7 +2039,7 @@ static int summaryLines(const CapMeta& m, char* b, size_t cap) {
 }
 
 // Header line i of a capture CSV (-1 = no more lines). Lines are whole "# key=value\n" blocks.
-static int capHeaderLine(const CapMeta& m, const char* sum, uint16_t i, char* b, size_t cap) {
+static int capHeaderLine(const CapMeta& m, const char* sum, const char* prof, uint16_t i, char* b, size_t cap) {
   char tmp[400];
   switch (i) {
     case 0:
@@ -1993,7 +2047,7 @@ static int capHeaderLine(const CapMeta& m, const char* sum, uint16_t i, char* b,
                       m.fw, m.type < CT_COUNT ? CAP_TYPE_NAME[m.type] : "?", (unsigned long)m.id,
                       (unsigned long)m.boot, (unsigned long)m.t0Ms, (unsigned long)m.triggerMs);
     case 1:
-      cfgFromSnap(m.cfg, tmp, sizeof(tmp), "\n", "# ");
+      cfgFromSnap(m.cfg, prof, tmp, sizeof(tmp), "\n", "# ");
       return snprintf(b, cap, "%s", tmp);
     case 2: return diagLines(m.diag, b, cap);
     case 3: {
@@ -2066,6 +2120,7 @@ static LogStream* streamStart(uint8_t kind, const char* ctype, const char* filen
   st->first = true;
   st->pendHdr = 0;
   st->err = nullptr;
+  st->profName[0] = 0;
   st->recItem = st->recItems = 0;
   st->gotN = st->gotNT = 0;
   st->lastProgressMs = millis();
@@ -2133,8 +2188,9 @@ static bool genLive(LogStream& st, char* dst, size_t cap, size_t& len) {
                        (unsigned long)(g_ringCap * LOG_SAMPLE_MS / 1000));
           break;
         case 1: {
-          char tmp[400];
-          cfgFromSnap(cs, tmp, sizeof(tmp), "\n", "# ");
+          char tmp[400], pn[PROFILE_NAME_BYTES + 1];
+          profileActiveName(pn, sizeof(pn));
+          cfgFromSnap(cs, pn, tmp, sizeof(tmp), "\n", "# ");
           n = snprintf(line, sizeof(line), "%s", tmp);
           break;
         }
@@ -2166,7 +2222,7 @@ static bool genCapture(LogStream& st, char* dst, size_t cap, size_t& len) {
   while (true) {
     int n;
     if (st.phase == 0) {   // header (from the BEGIN record read at request time)
-      n = capHeaderLine(st.meta, st.sum, st.line, line, sizeof(line));
+      n = capHeaderLine(st.meta, st.sum, st.profName, st.line, line, sizeof(line));
       if (n < 0) {
         st.phase = 1;
         continue;
@@ -2255,7 +2311,7 @@ static bool genDrive(LogStream& st, char* dst, size_t cap, size_t& len) {
         case 2:
           if (st.haveInfo) {
             char tmp[400];
-            cfgFromSnap(st.info.cfg, tmp, sizeof(tmp), "\n", "# ");
+            cfgFromSnap(st.info.cfg, st.profName, tmp, sizeof(tmp), "\n", "# ");
             n = snprintf(line, sizeof(line), "%s", tmp);
           }
           break;
@@ -2288,13 +2344,16 @@ static bool genDrive(LogStream& st, char* dst, size_t cap, size_t& len) {
       } else if (st.recType == REC_DRV_INFO) {   // config changed during the drive
         DrvInfo inf;
         memcpy(&inf, st.rec + LOG_REC_HDR, sizeof(inf));
-        if (st.haveInfo && memcmp(&inf.cfg, &st.info.cfg, sizeof(CfgSnap)) != 0) {
+        char pn[PROFILE_NAME_BYTES + 1];
+        readName(st.rec + LOG_REC_HDR, st.rec[1], sizeof(DrvInfo), pn);
+        if (st.haveInfo && (memcmp(&inf.cfg, &st.info.cfg, sizeof(CfgSnap)) != 0 || strcmp(pn, st.profName) != 0)) {
           char tmp[400];
-          cfgFromSnap(inf.cfg, tmp, sizeof(tmp), "", " ");
+          cfgFromSnap(inf.cfg, pn, tmp, sizeof(tmp), "", " ");
           n = snprintf(line, sizeof(line), "# config%s\n", tmp);
           if (!put(dst, cap, len, line, n)) return false;
         }
         st.info = inf;
+        memcpy(st.profName, pn, sizeof(st.profName));
         st.haveInfo = true;
       }
       st.recItem++;
@@ -2549,6 +2608,7 @@ static void handleCapture() {
         uint8_t sl = st->meta.sumLen <= st->rec[1] - sizeof(CapMeta) ? st->meta.sumLen : 0;
         memcpy(st->sum, st->rec + LOG_REC_HDR + sizeof(CapMeta), sl);
         st->sum[sl] = 0;
+        readName(st->rec + LOG_REC_HDR, st->rec[1], sizeof(CapMeta) + pad4(sl), st->profName);
         st->off = off;
       } else {
         memset(&st->meta, 0, sizeof(st->meta));
@@ -2604,6 +2664,7 @@ static void handleDrive() {
       if (nextRecord(st->win, d->firstSec, &off, st->rec, &at, nullptr) && st->rec[0] == REC_DRV_INFO &&
           st->rec[1] >= sizeof(DrvInfo)) {
         memcpy(&st->info, st->rec + LOG_REC_HDR, sizeof(DrvInfo));
+        readName(st->rec + LOG_REC_HDR, st->rec[1], sizeof(DrvInfo), st->profName);
         st->haveInfo = true;
       }
     }
