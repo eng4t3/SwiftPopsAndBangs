@@ -428,6 +428,8 @@ static bool requestAllowed() {
   return ok;
 }
 
+bool otaRequestAllowed() { return srv != nullptr && requestAllowed(); }
+
 static const char CROSS_SITE_MSG[] = "Elutasítva: a kérés egy másik weboldalról érkezett";
 
 // ---- Small helpers ----------------------------------------------------------------------------

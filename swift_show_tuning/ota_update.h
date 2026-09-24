@@ -25,3 +25,8 @@ void otaLoop();
 
 // true while firmware is being downloaded / written. The engine is inhibited meanwhile.
 bool otaIsBusy();
+
+// Cross-site / DNS-rebinding rule of the state-changing routes (Host must be an IPv4 literal or
+// a ".local" name; an Origin, if present, must be "http://" + that host). For other modules'
+// POST routes on the same server; call only from inside one of its request handlers.
+bool otaRequestAllowed();

@@ -40,6 +40,7 @@
 #include "version.h"
 #include "engine_control.h"
 #include "ota_update.h"
+#include "data_logger.h"
 #include "web_ui.h"
 
 // Tuning parameters (loaded from / saved to flash). Kept equal to engineGetConfig() after
@@ -1164,6 +1165,9 @@ void setup() {
   // Firmware update + device info routes
   otaBegin(server);
 
+  // Data logger: 25 Hz samples, flash drive log + event captures, /api/log/* routes
+  loggerBegin(server);
+
   server.onNotFound([]() {
     // Return empty 204 No Content for /favicon.ico and other browser prefetch probes
     server.send(204, "text/plain", "");
@@ -1207,4 +1211,7 @@ void loop() {
 
   // 6. Pending SAVE_FLASH
   serviceSave(now);
+
+  // 7. Data-logger downloads (non-blocking; sampling and flash writes run in the logger task)
+  loggerLoop();
 }
