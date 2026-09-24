@@ -1143,6 +1143,24 @@ void setup() {
 
   server.on("/", HTTP_GET, handleRoot);
 
+  // Engine diagnostics for real-car testing: open http://192.168.4.1/api/diag in the browser
+  server.on("/api/diag", HTTP_GET, []() {
+    EngineDiag d = engineGetDiag();
+    EngineTelemetry t = engineGetTelemetry();
+    char buf[360];
+    snprintf(buf, sizeof(buf),
+             "{\"rpm\":%d,\"rpmEstimated\":%s,\"measAgeMs\":%u,\"launchState\":%u,\"launchEnd\":%u,"
+             "\"switchActive\":%s,\"pulses\":%lu,\"rejected\":%lu,\"discarded\":%lu,\"outliers\":%lu,"
+             "\"unsyncs\":%lu,\"cutSlots\":%lu,\"floodTrips\":%lu,\"dwellBlocks\":%lu,\"launchDropRate\":%ld}",
+             t.rpm, t.rpmEstimated ? "true" : "false", (unsigned)t.measAgeMs, (unsigned)t.launchState,
+             (unsigned)t.launchEnd, t.switchActive ? "true" : "false", (unsigned long)d.pulses,
+             (unsigned long)d.rejected, (unsigned long)d.discarded, (unsigned long)d.outliers,
+             (unsigned long)d.unsyncs, (unsigned long)d.cutSlots, (unsigned long)d.floodTrips,
+             (unsigned long)d.dwellBlocks, (long)d.launchDropRate);
+    server.sendHeader("Cache-Control", "no-store");
+    server.send(200, "application/json", buf);
+  });
+
   // Firmware update + device info routes
   otaBegin(server);
 

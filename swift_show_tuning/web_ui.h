@@ -426,18 +426,21 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         <h3>🏁 Hands-free rajt (launch control)</h3>
         <p>• Koppints a gombra: indul a <b>10 mp-es készenlét (ARMED)</b>, a gomb alján visszaszámlálással.</p>
         <p>• Kuplung be, padlógáz: a fordulat a <b>rajt limiten</b> (pl. 3800 RPM) ragad, a motor durrog és lángol <b>(HOLDING)</b>.</p>
-        <p>• Kuplung felengedésekor a terhelés lehúzza a fordulatot. Ha a <b>kuplung-felengedés érzékenység</b> értékével (pl. 600 RPM) a limit alá esik, a tiltás azonnal megszűnik: <b>RAJT! (FIRED)</b>. Kisebb érték = hamarabb old, nagyobb = biztosabb.</p>
-        <p>• Az élesítés megszűnik, ha lejár a 10 mp, ha elveszed a gázt (2000 RPM alá), ha letelik az anti-flood idő, vagy ha újra koppintasz. Gyors dupla koppintásnál a második érintés nem számít.</p>
+        <p>• Kuplung felengedésekor a terhelés lehúzza a fordulatot. Ha a <b>kuplung-felengedés érzékenység</b> értékével (alapból 400 RPM) a limit alá esik, és ott is marad (legalább 3 valódi mérés, 60 ms), a tiltás azonnal megszűnik: <b>RAJT! (FIRED)</b>. Kisebb érték = hamarabb old, nagyobb = biztosabb.</p>
+        <p>• A saját tiltás okozta ingadozás nem old ki: a vezérlő csak a ténylegesen elsült szikrákból mér. Ágyúlövés mintázatnál rajtkor kemény tiltással tart, hogy a kuplung felengedése látszódjon.</p>
+        <p>• Befejeződik, ha 10 mp alatt nem éred el a rajt limitet, ha elveszed a gázt kuplungfelengedés előtt (újra kell élesíteni), ha 12 mp-nél tovább állsz a limiten, vagy ha újra koppintasz. Gyors dupla koppintásnál a második érintés nem számít.</p>
+        <p>• Rajt után 3 mp-ig nincs gázelvételi durrogás, hogy váltáskor ne rángasson.</p>
       </div>
       <div class="msec">
         <h3>🔥 Show mód / 2-step</h3>
         <p>Amíg nyomva tartod a gombot, a motor a rajt limiten tilt (állóhelyzeti durrogtatás, lángok); elengedve azonnal leáll.</p>
         <p><b>Biztonság:</b> a telefon 200 ms-onként megerősíti a nyomva tartást; ha a kapcsolat megszakad vagy elhagyod az oldalt, a vezérlő 0,6 mp-en belül magától elengedi.</p>
-        <p><b>Padteszt:</b> álló motornál a gomb folyamatosan tilt (bekötés-ellenőrzés). <b>GPIO 23 kapcsoló:</b> kézifékre vagy kuplungra kötve ugyanígy 2-step.</p>
+        <p><b>Padteszt:</b> ha a motor legalább 2 mp-e áll, a show gomb folyamatosan tilt (bekötés-ellenőrzés, a kék LED világít). Amint jön egy gyújtásjel, azonnal leáll.</p>
+        <p><b>GPIO 23 kapcsoló:</b> kézifékre vagy kuplungra kötve ugyanígy 2-step, de padtesztet soha nem indít, így kinyomott kuplunggal is indul a motor.</p>
       </div>
       <div class="msec">
         <h3>⚡ Limiter / redline</h3>
-        <p>Felső fordulatkorlát (pl. 6200 RPM): e fölött mindig tilt, a kiválasztott mintázattal. A fordulatszám-sáv piros zónája és a kijelző színe ezt követi.</p>
+        <p>Felső fordulatkorlát (pl. 6200 RPM): e fölött mindig tilt, a kiválasztott mintázattal. Ha a mintázat nem bírja megtartani (75 RPM-mel a limit fölé megy), kemény tiltásra vált. Az anti-flood a limitert soha nem kapcsolja ki. A fordulatszám-sáv piros zónája és a kijelző színe ezt követi.</p>
       </div>
       <div class="msec">
         <h3>💥 Gázelvételi durrogás</h3>
@@ -446,7 +449,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       <div class="msec">
         <h3>🎯 Mintázatok (gyújtásonként)</h3>
         <p>A mintázat minden tiltásnál eldönti, melyik szikra marad ki:</p>
-        <p>• <b>Kemény tiltás:</b> a limit fölött minden szikra kimarad (Bee*R limiter).</p>
+        <p>• <b>Kemény tiltás:</b> a limit fölött 2–5 szikra kimarad, majd 1 gyújt, ebből méri a fordulatot (Bee*R limiter).</p>
         <p>• <b>Lángcsóva:</b> 3 kimarad, 1 gyújt – sok keverék a kipufogóban, nagy lángok.</p>
         <p>• <b>Durrogás:</b> 2 kimarad, 1 gyújt – sűrű, mély lövések.</p>
         <p>• <b>AK-47:</b> 1 kimarad, 1 gyújt – gyors, géppuskaszerű staccato.</p>
@@ -454,17 +457,17 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       </div>
       <div class="msec">
         <h3>👻 Ghost Cam™ / V8 alapjárat</h3>
-        <p>Alapjáraton (650–1250 RPM) ritmikusan kihagy egy-egy szikrát, mint egy hegyes vezértengelyes V8. 1250 RPM fölött magától kikapcsol.</p>
+        <p>Stabil alapjáraton (650–1250 RPM) minden 5. szikrát kihagyja (sosem kettőt egymás után), mint egy hegyes vezértengelyes V8. Gázadáskor, elinduláskor és 1250 RPM fölött magától szünetel.</p>
       </div>
       <div class="msec">
         <h3>📟 Mi tilt most?</h3>
-        <p>A fordulatszám fölötti sávban: <b>2-STEP</b> (show gomb), <b>RAJT</b>, <b>KAPCSOLÓ</b> (GPIO 23), <b>REDLINE</b>, <b>DURROGÁS</b>, <b>GHOST CAM</b>, <b>PADTESZT</b>. <b>ANTI-FLOOD ZÁR:</b> tiltás lenne, de az időkorlát miatt a gyújtás vissza van adva.</p>
+        <p>A fordulatszám fölötti sávban: <b>2-STEP</b> (show gomb), <b>RAJT</b>, <b>KAPCSOLÓ</b> (GPIO 23), <b>REDLINE</b>, <b>DURROGÁS</b>, <b>GHOST CAM</b>, <b>PADTESZT</b>. <b>ANTI-FLOOD ZÁR:</b> a 100%-os tiltás elérte az időkorlátot, ezért a vezérlő szikrákat is enged (a limiter közben is működik).</p>
       </div>
       <div class="msec">
         <h3>🛡️ Biztonság</h3>
         <p>• <b>Főkapcsoló:</b> kikapcsolva a vezérlő soha nem vesz el szikrát.</p>
-        <p>• <b>Anti-flood:</b> a beállított ideig (pl. 3 s) tartó egybefüggő tiltás után visszaadja a gyújtást, hogy a gyertyák ne ázzanak el; a zár a tiltási kérés végéig tart (pl. a gomb elengedéséig). Jobb szélen (∞) kikapcsol.</p>
-        <p>• 2000 RPM alatt nincs tiltás (kivéve Ghost Cam, padteszt). Áramtalanítva, újraindulás és frissítés alatt a gyári gyújtás 100%-ban működik.</p>
+        <p>• <b>Anti-flood:</b> ha a tiltás a beállított ideig (pl. 3 s) egybefüggően 100%-os (pl. ágyúlövésnél), a vezérlő szikrákat is enged, hogy a gyertyák ne ázzanak el. A mintázatos tiltásban eleve vannak szikrák. Jobb szélen (∞) kikapcsol.</p>
+        <p>• 2000 RPM alatt nincs tiltás (kivéve Ghost Cam, padteszt). A főkapcsoló kikapcsolt állásában a redline limiter sem működik, csak a gyári ECU. Áramtalanítva, újraindulás és frissítés alatt a gyári gyújtás 100%-ban működik.</p>
       </div>
       <div class="msec">
         <h3>💾 Mentés</h3>
@@ -530,14 +533,15 @@ function setRpm(rpm) {
 }
 function drawRpm() {
   G.raf = 0;
-  const rpm = Math.max(0, Math.min(MAX_RPM, G.rpm | 0));
+  // The firmware does not cap the reading: show the real number, clamp only the bar
+  const rpm = Math.max(0, Math.min(9999, G.rpm | 0));
   if (rpm === G.shown) return;
   G.shown = rpm;
   const zone = rpm >= G.redline ? ' danger' : rpm >= G.warn ? ' warn' : '';
   elRpm.textContent = rpm;
   elRpm.className = 'rpm' + zone;
   elFill.className = 'rpm-fill' + zone;
-  elFill.style.transform = 'scaleX(' + (rpm / MAX_RPM).toFixed(4) + ')';
+  elFill.style.transform = 'scaleX(' + (Math.min(rpm, MAX_RPM) / MAX_RPM).toFixed(4) + ')';
   if (rpm > G.peak) { G.peak = rpm; txt('peak', 'CSÚCS ' + rpm); }
 }
 function resetPeak() { G.peak = 0; txt('peak', 'CSÚCS 0'); toast('Csúcsérték nullázva'); }
@@ -795,10 +799,10 @@ window.addEventListener('blur', showRelease);
 // id: [min, max, step, default, title, subtitle]
 const SLIDERS = {
   cfgLaunch: [2500, 6500, 50, 3800, 'Rajt limit (2-step)', 'Ezen a fordulaton tart a rajt és a show mód'],
-  cfgDrop: [300, 1500, 50, 600, 'Kuplung-felengedés érzékenység', 'Ennyivel a limit alá eső fordulat = kuplung fent'],
+  cfgDrop: [300, 1500, 50, 400, 'Kuplung-felengedés érzékenység', 'Ennyivel a limit alá eső fordulat = kuplung fent'],
   cfgRedline: [3000, 7500, 50, 6200, 'Fordulatszám-limit', 'E fölött mindig tilt – motorvédelem'],
   cfgDecel: [2500, 6000, 50, 3200, 'Bekapcsolási küszöb', 'Csak e fordulat fölötti gázelvételnél durrog'],
-  cfgTimeout: [1, 6, 0.5, 3, 'Anti-flood: max. tiltási idő', 'Egybefüggő tiltás után visszaadja a gyújtást (gyertyavédelem)']
+  cfgTimeout: [1, 6, 0.5, 3, 'Anti-flood: max. teljes tiltás', 'Ennyi 100%-os tiltás után szikrát is enged (gyertyavédelem)']
 };
 document.querySelectorAll('[data-sl]').forEach(d => {
   const id = d.dataset.sl, [min, max, step, val, title, sub] = SLIDERS[id];
@@ -807,7 +811,7 @@ document.querySelectorAll('[data-sl]').forEach(d => {
     + `<div class="sl-row">${stepBtn('-', 'csökkentés')}<input type="range" id="${id}" min="${min}" max="${max}" step="${step}" value="${val}" aria-label="${title}">${stepBtn('', 'növelés')}</div>`);
 });
 
-const CFG_DEF = { armed: true, launchRpm: 3800, redlineRpm: 6200, decelPops: true, decelRpm: 3200, cutPattern: 1, maxCutSeconds: 3.0, ghostCam: false, launchDrop: 600 };
+const CFG_DEF = { armed: true, launchRpm: 3800, redlineRpm: 6200, decelPops: true, decelRpm: 3200, cutPattern: 1, maxCutSeconds: 3.0, ghostCam: false, launchDrop: 400 };
 const INPUTS = { armed: 'cfgArmed', launchRpm: 'cfgLaunch', launchDrop: 'cfgDrop', redlineRpm: 'cfgRedline', decelPops: 'cfgDecelPops', decelRpm: 'cfgDecel', ghostCam: 'cfgGhostCam', maxCutSeconds: 'cfgTimeout' };
 const KEY_OF = {};
 for (const k in INPUTS) KEY_OF[INPUTS[k]] = k;
