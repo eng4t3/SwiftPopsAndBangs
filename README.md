@@ -53,8 +53,15 @@ Lefordítja a firmware-t, és a Windows 10/11 beépített `curl`-jével feltölt
 
 1. **🏁 Rajtautomatika / 2-Step (Launch Control):**
    - **Hands-Free mód:** Egyetlen érintéssel élesíthető (10 mp készenlét, visszaszámlálással). Kuplung be, padlógáz $	o$ a beállított értéken (pl. 3800 RPM) tart, dadog és lángol, amíg nyomod (max. 12 mp). A kuplung felengedésekor a terhelés lehúzza a fordulatot: ha a *kuplung-felengedés érzékenység* értékével (alapból 400 RPM) a limit alá esik és ott is marad, a tiltás ~0,1 mp-en belül megszűnik. A vezérlő csak a ténylegesen elsült szikrákból mér, így a saját tiltás okozta ingadozás nem oldja ki. Ha a kuplung előtt elveszed a gázt, a rajt befejeződik (újra kell élesíteni).
-   - **Show mód:** Állóhelyzeti durrogtatás és tűzköpés haveroknak a gomb nyomva tartásával. Ha a telefon kapcsolata megszakad, a vezérlő 0,6 mp-en belül magától elengedi a gombot.
-   - **Hardveres kapcsoló (GPIO 23):** Kézifékre vagy kuplungpedál mikrokapcsolóra köthető (20 ms pergésmentesítéssel). Padtesztet soha nem indít, így kinyomott kuplunggal is indul a motor.
+   - **Hardveres kapcsoló (GPIO 23, opcionális):** Kézifékre vagy kuplungpedál mikrokapcsolóra köthető 2-stephez (20 ms pergésmentesítéssel). Kinyomott kuplunggal is indul a motor.
+   - A telefonos nyomva tartós „show” gomb a v2.2-ben megszűnt: a Wi-Fi-n keresztül senki nem tud 2-stepet tartani.
+
+   - **🎛 Profilok (v2.2):** három beállításprofil az ESP-n, egy koppintással váltható, menet közben is:
+     - 🚗 **UTCA:** diszkrét, csak a limiter;
+     - 🔥 **SHOW:** lángcsóva, gázelvételi durrogás, ghost cam;
+     - 🏁 **RAJT:** 3500 RPM, kemény tiltás.
+     
+     A kiválasztott profilt szerkeszted, a MENTÉS abba ment. Átnevezhetők, és gyári értékre visszaállíthatók. A főkapcsoló közös, nem része a profiloknak.
 
 2. **⚡ Redline Rev Limiter (Maximális tiltás):**
    - Gyári lassú üzemanyag-elvétel helyett villámgyors szikraelvétel (Bee*R limiter stílusú géppuskasorozat), 100 RPM hiszterézissel.
