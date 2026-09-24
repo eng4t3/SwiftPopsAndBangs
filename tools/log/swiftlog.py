@@ -18,6 +18,7 @@ Usage:
     python tools/log/swiftlog.py capture  swiftlog.bin 57 [-o swift_launch_57.csv]
     python tools/log/swiftlog.py drive    swiftlog.bin 12 [--from MS --to MS --step K] [-o out.csv]
     python tools/log/swiftlog.py csvcheck swift_launch_57.csv     check a CSV downloaded from the ESP
+Since v2.2 the config blocks carry `profile` / `profile_name` (-1 / empty for older records).
 A drive gap (`# gap` line) means samples were lost, or logging was switched off and on again
 within the same boot (POST /api/log/config); the flash format is the same either way.
 Options: --offset 0x290000 when the file is a full flash dump; --clear-seq N to hide what a
@@ -65,11 +66,14 @@ TRACE_COLUMNS = "t_us,kind,period_us,info"
 SAMPLE_FMT = "<IHBBBBH"          # LogSample, 12 bytes
 TRACE_FMT = "<IHBB"              # EngineTraceEvent, 8 bytes
 SECTOR_HDR_FMT = "<IBBHIII"      # SectorHdr, 20 bytes
-CFG_FMT = "<HHHHBBHI"            # CfgSnap, 16 bytes
+CFG_FMT = "<HHHHBBHB3x"          # CfgSnap, 16 bytes (byte 12 = profile + 1, 0 = unknown)
 DIAG_FMT = "<IIIIIIIIi"          # DiagSnap, 36 bytes
 CAP_META_HEAD_FMT = "<IIBBBBIIIHHI"   # CapMeta up to traceLost, 32 bytes
 CAP_META_SIZE = 120
 DRV_INFO_SIZE = 32
+NAME_FIELD_SIZE = 28             # v2.2 NameField: u8 len + 24 bytes UTF-8 + 3 pad
+PROFILE_NAME_BYTES = 24
+LOG_SUM_MAX = 84
 CAP_END_FMT = "<IHHI"            # CapEnd, 12 bytes
 DRV_GAP_FMT = "<III"             # DrvGap, 12 bytes
 
@@ -155,24 +159,41 @@ class Config:
     decelPops: bool = True
     ghostCam: bool = False
     maxCutCs: int = 300
+    profile: int = -1            # settings profile (v2.2), -1 = unknown (older data)
+    profile_name: str = ""       # from the record's NameField (not part of CfgSnap)
 
     @staticmethod
     def unpack(b: bytes) -> "Config":
-        lr, ld, rr, dr, pat, fl, mc, _ = struct.unpack(CFG_FMT, b)
-        return Config(lr, ld, rr, dr, pat, bool(fl & 1), bool(fl & 2), bool(fl & 4), mc)
+        lr, ld, rr, dr, pat, fl, mc, p1 = struct.unpack(CFG_FMT, b)
+        return Config(lr, ld, rr, dr, pat, bool(fl & 1), bool(fl & 2), bool(fl & 4), mc, p1 - 1)
 
     def pack(self) -> bytes:
         fl = (1 if self.armed else 0) | (2 if self.decelPops else 0) | (4 if self.ghostCam else 0)
         return struct.pack(CFG_FMT, self.launchRpm, self.launchDrop, self.redlineRpm, self.decelRpm,
-                           self.cutPattern, fl, self.maxCutCs, 0)
+                           self.cutPattern, fl, self.maxCutCs, self.profile + 1)
 
     def pairs(self) -> List[Tuple[str, str]]:
-        """key=value pairs in the firmware's order (cfgFromSnap)."""
+        """key=value pairs in the firmware's order (cfgFromSnap); profile_name last."""
         return [("launchRpm", str(self.launchRpm)), ("launchDrop", str(self.launchDrop)),
                 ("redlineRpm", str(self.redlineRpm)), ("cutPattern", str(self.cutPattern)),
                 ("maxCutSeconds", "%d.%02d" % (self.maxCutCs // 100, self.maxCutCs % 100)),
                 ("decelPops", "1" if self.decelPops else "0"), ("decelRpm", str(self.decelRpm)),
-                ("ghostCam", "1" if self.ghostCam else "0"), ("armed", "1" if self.armed else "0")]
+                ("ghostCam", "1" if self.ghostCam else "0"), ("armed", "1" if self.armed else "0"),
+                ("profile", str(self.profile)), ("profile_name", self.profile_name if self.profile >= 0 else "")]
+
+
+def pack_name(name: str) -> bytes:
+    b = name.encode("utf-8")[:PROFILE_NAME_BYTES]
+    return bytes([len(b)]) + b.ljust(PROFILE_NAME_BYTES, b"\0") + b"\0\0\0"
+
+
+def read_name(payload: bytes, off: int) -> str:
+    """Optional NameField at `off` (absent in records written before v2.2)."""
+    if off + NAME_FIELD_SIZE > len(payload):
+        return ""
+    n = payload[off]
+    n = n if n <= PROFILE_NAME_BYTES else 0
+    return payload[off + 1:off + 1 + n].decode("utf-8", "replace")
 
 
 DIAG_KEYS = ["pulses", "rejected", "discarded", "outliers", "unsyncs", "cutSlots", "floodTrips",
@@ -265,6 +286,9 @@ def iter_records(sec: bytes, start: int = LOG_SECTOR_HDR):
         rtype = sec[o]
         if rtype == 0xFF:
             if o == first:
+                if page_end < LOG_SECTOR_SIZE and sec[page_end] != 0xFF:   # torn write at this page start
+                    o = page_end
+                    continue
                 yield ("end", o, bad)
                 return
             o = page_end
@@ -383,6 +407,7 @@ class LogImage:
                     if live and meta.type < len(CAP_TYPES):
                         sl = meta.sumLen if meta.sumLen <= len(pl) - CAP_META_SIZE else 0
                         text = pl[CAP_META_SIZE:CAP_META_SIZE + sl].decode("utf-8", "replace")
+                        meta.cfg.profile_name = read_name(pl, CAP_META_SIZE + ((sl + 3) & ~3))
                         cur = Capture(meta, text, sector=i, offset=off)
                         self.captures.append(cur)
                         crc = 0
@@ -443,6 +468,7 @@ class LogImage:
                 elif rtype == REC_DRV_INFO and len(pl) >= DRV_INFO_SIZE:
                     fw = pl[4:16].split(b"\0", 1)[0].decode("ascii", "replace")
                     cfg = Config.unpack(pl[16:32])
+                    cfg.profile_name = read_name(pl, DRV_INFO_SIZE)
                     cur.items.append(("info", (fw, cfg)))
                     if cur.cfg is None:
                         cur.fw, cur.cfg = fw, cfg
@@ -549,7 +575,8 @@ def drive_csv(d: Drive, from_ms: Optional[int] = None, to_ms: Optional[int] = No
 # ---- CSV checker (for files downloaded from the ESP) ---------------------------------------------
 REQUIRED_KEYS = ["fw", "type", "boot", "t0_ms"]
 CAPTURE_KEYS = ["id", "trigger_ms", "launchRpm", "launchDrop", "redlineRpm", "cutPattern", "maxCutSeconds",
-                "decelPops", "decelRpm", "ghostCam", "armed"] + DIAG_KEYS + ["dur_ms", "n", "trace", "sum"]
+                "decelPops", "decelRpm", "ghostCam", "armed", "profile", "profile_name"] + DIAG_KEYS + [
+                "dur_ms", "n", "trace", "sum"]
 
 
 def check_csv(text: str) -> List[str]:
@@ -704,7 +731,8 @@ class LogWriter:
         gaps = gaps or {}
         cfg_changes = cfg_changes or {}
         state = {"cfg": cfg}
-        info = lambda: struct.pack("<I", boot) + fw.encode()[:11].ljust(12, b"\0") + state["cfg"].pack()
+        info = lambda: (struct.pack("<I", boot) + fw.encode()[:11].ljust(12, b"\0") + state["cfg"].pack()
+                        + pack_name(state["cfg"].profile_name))
         self.off[LOG_REGION_DRIVE] = LOG_SECTOR_SIZE   # a boot starts a new sector
         i = 0
         while i < len(samples):
@@ -728,11 +756,11 @@ class LogWriter:
     def write_capture(self, meta: CapMeta, summary: str, samples: List[Sample], trace: List[TraceEvent],
                       boot: int, stop_after: Optional[int] = None) -> Tuple[int, int]:
         """stop_after = number of records to write (simulates a power loss)."""
-        sb = summary.encode("utf-8")[:132]
+        sb = summary.encode("utf-8")[:LOG_SUM_MAX]
         meta.sumLen = len(sb)
         meta.nSamples = len(samples)
         meta.nTrace = len(trace)
-        payload = meta.pack() + sb + b"\0" * ((4 - len(sb) % 4) % 4)
+        payload = meta.pack() + sb + b"\0" * ((4 - len(sb) % 4) % 4) + pack_name(meta.cfg.profile_name)
         written = 0
 
         def budget():

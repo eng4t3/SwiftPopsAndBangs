@@ -19,8 +19,12 @@
  *       1 s select() up to 10 times and can stall loop() for ~10 s on a stale phone.
  *     - WebSocket frames are parsed from a persistent per-client buffer (several frames per
  *       TCP read, frames split across reads, fragmentation, ping/pong, close).
- *     - The show button is released whenever the client holding it goes away or stops
- *       refreshing BTN:1 (600 ms dead-man, same as the engine's own dead-man).
+ *     - No remote 2-step (v2.2): the show mode was removed, BTN:1 / BTN:0 from an old cached
+ *       page are ignored and the glue never holds the engine's show button. Hands-free launch
+ *       (LAUNCH:ARM) and the GPIO 23 switch are unchanged.
+ *     - Settings profiles (v2.2): three slots in NVS, the active one is the running config.
+ *       Every NVS write waits for a moment without spark cut (<= 1 s): flash writes stall both
+ *       CPUs and mask the engine ISRs.
  * =========================================================================================
  */
 
@@ -41,6 +45,7 @@
 #include "engine_control.h"
 #include "ota_update.h"
 #include "data_logger.h"
+#include "profiles.h"
 #include "web_ui.h"
 
 // Tuning parameters (loaded from / saved to flash). Kept equal to engineGetConfig() after
@@ -65,7 +70,6 @@ static const uint32_t WS_PING_INTERVAL_MS     = 2000;  // server ping; browsers 
 static const uint32_t WS_RX_TIMEOUT_MS        = 7000;  // nothing (not even a pong) for this long = dead client
 static const uint32_t WS_TX_STALL_MS          = 3000;  // socket accepted no byte of our backlog for this long = dead
 static const uint32_t WS_CLOSE_LINGER_MS      = 500;   // time to flush our close frame before dropping TCP
-static const uint32_t BTN_DEADMAN_MS          = 600;   // BTN:1 must be refreshed within this time (PROTOCOL.md)
 static const uint32_t SAVE_MAX_DEFER_MS       = 1000;  // NVS write waits for a moment without spark cut
 static const uint32_t PAGE_STALL_MS           = 5000;  // HTTP page transfer without progress is aborted
 static const uint32_t LOOP_GAP_GRACE_MS       = 1000;  // loop() was blocked (OTA upload...): refresh timeouts
@@ -100,12 +104,10 @@ struct WsConn {
   uint32_t lastPingMs = 0;
   uint32_t txProgressMs = 0;  // last time the TX backlog shrank (or became non-empty)
   uint32_t closeMs = 0;
-  uint32_t btnMs = 0;         // last BTN:1
   size_t   rxLen = 0;
   size_t   txLen = 0;
   size_t   fragLen = 0;
   uint8_t  fragOpcode = 0;    // 0 = no fragmented message in progress
-  bool     btnHeld = false;
   bool     saveAck = false;   // ACK:SAVED owed to this client
   uint8_t  rx[WS_RX_CAP];
   uint8_t  tx[WS_TX_CAP];
@@ -126,51 +128,243 @@ static char g_etag[40];                 // "<FW_VERSION>-<content hash>" of INDE
 static const size_t INDEX_HTML_LEN = sizeof(INDEX_HTML) - 1;
 
 // =========================================================================================
-// NON-VOLATILE STORAGE (NVS PREFERENCES)
+// NON-VOLATILE STORAGE (NVS PREFERENCES) + SETTINGS PROFILES (v2.2)
 // =========================================================================================
-// Schema history:
-//   0 (no "schema" key) - firmware 1.x: same keys, no launchDrop
-//   1                   - firmware 2.x: adds launchDrop
-// Bump NVS_SCHEMA_VERSION whenever a key changes meaning or a default must be re-applied to
-// existing installs, and migrate in loadConfigFromNVS().
-#define NVS_NAMESPACE      "tuning"
-#define NVS_SCHEMA_KEY     "schema"
-#define NVS_SCHEMA_VERSION 1
+// Namespace "tuning". Schema history:
+//   0 (no "schema" key) - firmware 1.x: one config (launchRpm, redlineRpm, decelPops, decelRpm,
+//                         cutPattern, maxCutSec, ghostCam, armed), no launchDrop
+//   1                   - firmware 2.0 / 2.1: + launchDrop
+//   2                   - firmware 2.2: profiles. "prof0".."prof2" = ProfileBlob, "pname0".."pname2"
+//                         = names, "profAct" = active slot; "armed" stays global. The single-
+//                         config keys of schema 0/1 are no longer written (a 2.1 downgrade finds
+//                         the settings of the day of the update) and are read once for the migration.
+// Bump NVS_SCHEMA_VERSION whenever a key changes meaning; migrate in loadConfigFromNVS().
+#define NVS_NAMESPACE        "tuning"
+#define NVS_SCHEMA_KEY       "schema"
+#define NVS_SCHEMA_VERSION   2
+#define PROFILE_BLOB_VERSION 1
 
-void loadConfigFromNVS() {
+struct ProfileBlob {       // one slot in NVS ("prof<n>"), 20 bytes; `armed` is not part of it
+  uint8_t  version;        // PROFILE_BLOB_VERSION
+  uint8_t  size;           // sizeof(ProfileBlob)
+  uint8_t  cutPattern;
+  uint8_t  flags;          // bit0 decelPops, bit1 ghostCam
+  int16_t  launchRpm, redlineRpm, decelRpm, launchDrop;
+  float    maxCutSeconds;
+  uint32_t check;          // FNV-1a of the 16 bytes above
+};
+static_assert(sizeof(ProfileBlob) == 20, "profile blob layout");
+
+static const char* const PROFILE_FACTORY_NAME[PROFILE_COUNT] = {"UTCA", "SHOW", "RAJT"};
+
+static TuningConfig g_profCfg[PROFILE_COUNT];                 // saved values of each slot (armed unused)
+static char g_profName[PROFILE_COUNT][PROFILE_NAME_BYTES + 1];
+static uint8_t g_profActive = 1;
+static portMUX_TYPE g_profMux = portMUX_INITIALIZER_UNLOCKED; // names / active index for other tasks
+
+// Pending NVS writes (all go through serviceSave(): no-cut rule, <= 1 s deferral)
+static bool g_nvsSlotDirty[PROFILE_COUNT], g_nvsNameDirty[PROFILE_COUNT];
+static bool g_nvsActiveDirty = false, g_nvsArmedDirty = false, g_nvsSchemaDirty = false;
+static bool g_armedToSave = true;
+static uint32_t g_saveRequestMs = 0, g_nvsRetryAt = 0;
+
+uint8_t profileActiveIndex() { return g_profActive; }
+
+void profileActiveName(char* out, size_t cap) {
+  if (!out || !cap) return;
+  portENTER_CRITICAL(&g_profMux);
+  strncpy(out, g_profName[g_profActive < PROFILE_COUNT ? g_profActive : 1], cap - 1);
+  portEXIT_CRITICAL(&g_profMux);
+  out[cap - 1] = '\0';
+}
+
+// Factory values: config defaults with the per-slot overrides of the contract.
+static TuningConfig profileFactory(uint8_t slot) {
+  TuningConfig c = engineDefaultConfig();
+  switch (slot) {
+    case 0:  c.decelPops = false; c.ghostCam = false; c.cutPattern = 0; break;                     // UTCA
+    case 2:  c.launchRpm = 3500; c.decelPops = false; c.ghostCam = false; c.cutPattern = 0; break;  // RAJT
+    default: c.decelPops = true; c.ghostCam = true; c.cutPattern = 1; break;                       // SHOW
+  }
+  return c;
+}
+
+static uint32_t fnv1a(const void* data, size_t n) {
+  const uint8_t* p = (const uint8_t*)data;
+  uint32_t h = 2166136261u;
+  for (size_t i = 0; i < n; i++) {
+    h ^= p[i];
+    h *= 16777619u;
+  }
+  return h;
+}
+
+static ProfileBlob blobFromConfig(const TuningConfig& c) {
+  ProfileBlob b;
+  memset(&b, 0, sizeof(b));
+  b.version = PROFILE_BLOB_VERSION;
+  b.size = sizeof(ProfileBlob);
+  b.cutPattern = (uint8_t)c.cutPattern;
+  b.flags = (uint8_t)((c.decelPops ? 1 : 0) | (c.ghostCam ? 2 : 0));
+  b.launchRpm = (int16_t)c.launchRpm;
+  b.redlineRpm = (int16_t)c.redlineRpm;
+  b.decelRpm = (int16_t)c.decelRpm;
+  b.launchDrop = (int16_t)c.launchDrop;
+  b.maxCutSeconds = c.maxCutSeconds;
+  b.check = fnv1a(&b, offsetof(ProfileBlob, check));
+  return b;
+}
+
+// false = bad blob (wrong version / size / checksum / impossible values): the caller keeps the
+// factory values of that slot.
+static bool blobToConfig(const ProfileBlob& b, uint8_t slot, TuningConfig& out) {
+  if (b.version != PROFILE_BLOB_VERSION || b.size != sizeof(ProfileBlob) ||
+      b.check != fnv1a(&b, offsetof(ProfileBlob, check)) || b.cutPattern > 4 || (b.flags & ~3u) ||
+      !isfinite(b.maxCutSeconds) || b.maxCutSeconds < 0.0f) {
+    return false;
+  }
+  TuningConfig c = profileFactory(slot);
+  c.cutPattern = b.cutPattern;
+  c.decelPops = (b.flags & 1) != 0;
+  c.ghostCam = (b.flags & 2) != 0;
+  c.launchRpm = b.launchRpm;
+  c.redlineRpm = b.redlineRpm;
+  c.decelRpm = b.decelRpm;
+  c.launchDrop = b.launchDrop;
+  c.maxCutSeconds = b.maxCutSeconds;
+  engineClampConfig(c);
+  out = c;
+  return true;
+}
+
+// Profile name rule (contract): drop control characters (C0, DEL, C1), '"', '\' and invalid
+// UTF-8, trim surrounding spaces, keep at most PROFILE_NAME_CHARS characters and
+// PROFILE_NAME_BYTES bytes (cut only between characters). Returns the byte length (0 = empty).
+static size_t sanitizeName(const char* in, size_t n, char* out /* PROFILE_NAME_BYTES + 1 */) {
+  size_t len = 0, chars = 0, i = 0;
+  while (i < n) {
+    uint8_t c0 = (uint8_t)in[i];
+    size_t k;                       // bytes of this character
+    uint32_t cp;
+    if (c0 < 0x80) {
+      k = 1;
+      cp = c0;
+    } else {
+      uint8_t lo = 0x80, hi = 0xBF;  // allowed range of the 2nd byte (no overlongs / surrogates)
+      if (c0 >= 0xC2 && c0 <= 0xDF) { k = 2; cp = c0 & 0x1F; }
+      else if (c0 >= 0xE0 && c0 <= 0xEF) { k = 3; cp = c0 & 0x0F; if (c0 == 0xE0) lo = 0xA0; if (c0 == 0xED) hi = 0x9F; }
+      else if (c0 >= 0xF0 && c0 <= 0xF4) { k = 4; cp = c0 & 0x07; if (c0 == 0xF0) lo = 0x90; if (c0 == 0xF4) hi = 0x8F; }
+      else { i++; continue; }        // stray continuation / invalid lead byte: dropped
+      bool ok = i + k <= n;
+      for (size_t j = 1; ok && j < k; j++) {
+        uint8_t cj = (uint8_t)in[i + j];
+        if (j == 1 ? (cj < lo || cj > hi) : (cj < 0x80 || cj > 0xBF)) ok = false;
+        else cp = (cp << 6) | (cj & 0x3F);
+      }
+      if (!ok) { i++; continue; }    // incomplete / malformed sequence: lead byte dropped
+    }
+    bool drop = cp < 0x20 || cp == 0x7F || (cp >= 0x80 && cp <= 0x9F) || cp == '"' || cp == '\\' ||
+                (cp == ' ' && len == 0);   // leading spaces
+    if (!drop) {
+      if (chars + 1 > PROFILE_NAME_CHARS || len + k > PROFILE_NAME_BYTES) break;   // limit reached
+      memcpy(out + len, in + i, k);
+      len += k;
+      chars++;
+    }
+    i += k;
+  }
+  while (len && out[len - 1] == ' ') len--;   // trailing spaces
+  out[len] = '\0';
+  return len;
+}
+
+// ---- NVS load (setup) ---------------------------------------------------------------------------
+static void markAllProfilesDirty() {
+  for (int i = 0; i < PROFILE_COUNT; i++) g_nvsSlotDirty[i] = g_nvsNameDirty[i] = true;
+  g_nvsActiveDirty = g_nvsSchemaDirty = true;
+  g_saveRequestMs = millis();
+}
+
+// Reads the single config of firmware 1.x / 2.0 / 2.1 (schema 0/1).
+static TuningConfig loadLegacyConfig() {
   const TuningConfig d = engineDefaultConfig();
   TuningConfig c = d;
-  if (prefs.begin(NVS_NAMESPACE, true)) {  // read-only; fails (-> defaults) on first boot
-    uint8_t schema  = prefs.getUChar(NVS_SCHEMA_KEY, 0);
-    c.armed         = prefs.getBool("armed", d.armed);
-    c.launchRpm     = prefs.getInt("launchRpm", d.launchRpm);
-    c.redlineRpm    = prefs.getInt("redlineRpm", d.redlineRpm);
-    c.decelPops     = prefs.getBool("decelPops", d.decelPops);
-    c.decelRpm      = prefs.getInt("decelRpm", d.decelRpm);
-    c.cutPattern    = prefs.getInt("cutPattern", d.cutPattern);
-    c.maxCutSeconds = prefs.getFloat("maxCutSec", d.maxCutSeconds);
-    c.ghostCam      = prefs.getBool("ghostCam", d.ghostCam);
-    c.launchDrop    = prefs.getInt("launchDrop", d.launchDrop);
-    prefs.end();
-    if (schema > NVS_SCHEMA_VERSION) {
-      Serial.printf("[NVS] settings from newer firmware (schema %u), using known keys\n", schema);
-    }
-    // Migrations go here, e.g. if (schema < 2) { c.someKey = d.someKey; }
-  }
-  // A damaged anti-flood value must fall back to the default, never to "unlimited"
-  // (engineClampConfig maps NaN/negative to 0 = unlimited). Same for an invalid pattern
-  // (clamping would turn it into the most aggressive one).
+  c.launchRpm     = prefs.getInt("launchRpm", d.launchRpm);
+  c.redlineRpm    = prefs.getInt("redlineRpm", d.redlineRpm);
+  c.decelPops     = prefs.getBool("decelPops", d.decelPops);
+  c.decelRpm      = prefs.getInt("decelRpm", d.decelRpm);
+  c.cutPattern    = prefs.getInt("cutPattern", d.cutPattern);
+  c.maxCutSeconds = prefs.getFloat("maxCutSec", d.maxCutSeconds);
+  c.ghostCam      = prefs.getBool("ghostCam", d.ghostCam);
+  c.launchDrop    = prefs.getInt("launchDrop", d.launchDrop);
+  // A damaged anti-flood value falls back to the default, never to "unlimited"; an invalid
+  // pattern too (clamping would turn it into the most aggressive one).
   if (!isfinite(c.maxCutSeconds) || c.maxCutSeconds < 0.0f) c.maxCutSeconds = d.maxCutSeconds;
   if (c.cutPattern < 0 || c.cutPattern > 4) c.cutPattern = d.cutPattern;
   engineClampConfig(c);
-  config = c;
+  return c;
 }
 
-// Write only keys whose stored value differs (saves flash wear on repeated SAVE_FLASH).
-static bool nvsPutInt(const char* key, int32_t v) {
-  if (prefs.getType(key) == PT_I32 && prefs.getInt(key, ~v) == v) return true;
-  return prefs.putInt(key, v) != 0;
+void loadConfigFromNVS() {
+  bool armed = engineDefaultConfig().armed;
+  for (uint8_t i = 0; i < PROFILE_COUNT; i++) {
+    g_profCfg[i] = profileFactory(i);
+    strcpy(g_profName[i], PROFILE_FACTORY_NAME[i]);
+  }
+  g_profActive = 1;
+  if (prefs.begin(NVS_NAMESPACE, true)) {  // read-only; fails (-> factory values) on first boot
+    uint8_t schema = prefs.getUChar(NVS_SCHEMA_KEY, 0);
+    armed = prefs.getBool("armed", armed);
+    char key[8];
+    bool haveProfiles = prefs.isKey("profAct");
+    for (int i = 0; i < PROFILE_COUNT && !haveProfiles; i++) {
+      snprintf(key, sizeof(key), "prof%d", i);
+      haveProfiles = prefs.isKey(key);
+    }
+    if (haveProfiles) {
+      for (uint8_t i = 0; i < PROFILE_COUNT; i++) {
+        snprintf(key, sizeof(key), "prof%u", (unsigned)i);
+        ProfileBlob b;
+        TuningConfig c;
+        if (prefs.isKey(key)) {
+          if (prefs.getBytesLength(key) == sizeof(b) && prefs.getBytes(key, &b, sizeof(b)) == sizeof(b) &&
+              blobToConfig(b, i, c)) {
+            g_profCfg[i] = c;
+          } else {
+            Serial.printf("[NVS] profile %u damaged: factory values\n", (unsigned)i);
+          }
+        }
+        snprintf(key, sizeof(key), "pname%u", (unsigned)i);
+        char raw[64];
+        char clean[PROFILE_NAME_BYTES + 1];
+        if (prefs.isKey(key) && prefs.getString(key, raw, sizeof(raw)) > 0 &&
+            sanitizeName(raw, strlen(raw), clean) > 0) {
+          strcpy(g_profName[i], clean);
+        }
+      }
+      uint8_t a = prefs.getUChar("profAct", 1);
+      g_profActive = a < PROFILE_COUNT ? a : 1;
+      if (schema > NVS_SCHEMA_VERSION) {
+        Serial.printf("[NVS] settings from newer firmware (schema %u), using known keys\n", schema);
+      }
+    } else if (prefs.isKey(NVS_SCHEMA_KEY) || prefs.isKey("launchRpm") || prefs.isKey("redlineRpm") ||
+               prefs.isKey("cutPattern") || prefs.isKey("maxCutSec") || prefs.isKey("decelPops") ||
+               prefs.isKey("ghostCam") || prefs.isKey("decelRpm") || prefs.isKey("launchDrop")) {
+      // Migration from 2.0 / 2.1 (or 1.x): the saved config becomes slot 1 (SHOW) and active.
+      g_profCfg[1] = loadLegacyConfig();
+      g_profActive = 1;
+      markAllProfilesDirty();   // persisted at the first moment without spark cut
+      Serial.printf("[NVS] schema %u settings migrated into profile 1 (%s)\n", schema, g_profName[1]);
+    }
+    prefs.end();
+  }
+  config = g_profCfg[g_profActive];
+  config.armed = armed;
+  engineClampConfig(config);
 }
+
+// ---- NVS write (loop task, only from serviceSave) ------------------------------------------------
+// Write only keys whose stored value differs (saves flash wear on repeated saves).
 static bool nvsPutBool(const char* key, bool v) {
   if (prefs.getType(key) == PT_U8 && prefs.getUChar(key, 0xFF) == (v ? 1 : 0)) return true;
   return prefs.putBool(key, v) != 0;
@@ -179,28 +373,63 @@ static bool nvsPutUChar(const char* key, uint8_t v) {
   if (prefs.getType(key) == PT_U8 && prefs.getUChar(key, (uint8_t)~v) == v) return true;
   return prefs.putUChar(key, v) != 0;
 }
-static bool nvsPutFloat(const char* key, float v) {
-  float old = NAN;
-  if (prefs.getType(key) == PT_BLOB && prefs.getBytesLength(key) == sizeof(float)) {
-    old = prefs.getFloat(key, NAN);
-    if (memcmp(&old, &v, sizeof(float)) == 0) return true;
+static bool nvsPutBlob(const char* key, const void* data, size_t len) {
+  uint8_t old[32];
+  if (len <= sizeof(old) && prefs.getType(key) == PT_BLOB && prefs.getBytesLength(key) == len &&
+      prefs.getBytes(key, old, sizeof(old)) == len && memcmp(old, data, len) == 0) {
+    return true;
   }
-  return prefs.putFloat(key, v) != 0;
+  return prefs.putBytes(key, data, len) == len;
+}
+static bool nvsPutString(const char* key, const char* v) {
+  char old[64];
+  if (prefs.getType(key) == PT_STR && prefs.getString(key, old, sizeof(old)) > 0 && strcmp(old, v) == 0) return true;
+  return prefs.putString(key, v) != 0;
 }
 
-bool saveConfigToNVS(const TuningConfig& c) {
+static bool nvsAnyDirty() {
+  if (g_nvsActiveDirty || g_nvsArmedDirty || g_nvsSchemaDirty) return true;
+  for (int i = 0; i < PROFILE_COUNT; i++) {
+    if (g_nvsSlotDirty[i] || g_nvsNameDirty[i]) return true;
+  }
+  return false;
+}
+
+// Marks what must be written; the deferral timer starts with the first pending item.
+static void nvsQueueStart(uint32_t now) {
+  if (!nvsAnyDirty()) g_saveRequestMs = now;
+}
+
+// Writes every pending item (each flag is cleared only after its successful write).
+static bool nvsWriteDirty() {
   if (!prefs.begin(NVS_NAMESPACE, false)) return false;
   bool ok = true;
-  ok &= nvsPutBool("armed", c.armed);
-  ok &= nvsPutInt("launchRpm", c.launchRpm);
-  ok &= nvsPutInt("redlineRpm", c.redlineRpm);
-  ok &= nvsPutBool("decelPops", c.decelPops);
-  ok &= nvsPutInt("decelRpm", c.decelRpm);
-  ok &= nvsPutInt("cutPattern", c.cutPattern);
-  ok &= nvsPutFloat("maxCutSec", c.maxCutSeconds);
-  ok &= nvsPutBool("ghostCam", c.ghostCam);
-  ok &= nvsPutInt("launchDrop", c.launchDrop);
-  ok &= nvsPutUChar(NVS_SCHEMA_KEY, NVS_SCHEMA_VERSION);
+  char key[8];
+  for (uint8_t i = 0; i < PROFILE_COUNT; i++) {
+    if (g_nvsSlotDirty[i]) {
+      snprintf(key, sizeof(key), "prof%u", (unsigned)i);
+      ProfileBlob b = blobFromConfig(g_profCfg[i]);
+      if (nvsPutBlob(key, &b, sizeof(b))) g_nvsSlotDirty[i] = false;
+      else ok = false;
+    }
+    if (g_nvsNameDirty[i]) {
+      snprintf(key, sizeof(key), "pname%u", (unsigned)i);
+      if (nvsPutString(key, g_profName[i])) g_nvsNameDirty[i] = false;
+      else ok = false;
+    }
+  }
+  if (g_nvsActiveDirty) {
+    if (nvsPutUChar("profAct", g_profActive)) g_nvsActiveDirty = false;
+    else ok = false;
+  }
+  if (g_nvsArmedDirty) {
+    if (nvsPutBool("armed", g_armedToSave)) g_nvsArmedDirty = false;
+    else ok = false;
+  }
+  if (g_nvsSchemaDirty) {
+    if (nvsPutUChar(NVS_SCHEMA_KEY, NVS_SCHEMA_VERSION)) g_nvsSchemaDirty = false;
+    else ok = false;
+  }
   prefs.end();
   return ok;
 }
@@ -398,26 +627,11 @@ static WsConn g_ws[WS_SLOTS];
 static char g_msg[WS_MAX_MSG + 1];
 static volatile bool g_apStationLeft = false;
 static uint32_t g_lastWsServiceMs = 0;
-static bool g_savePending = false;
-static uint32_t g_saveRequestMs = 0;
 
 static const char WS_GUID[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
 static bool isTransientSendError(int e) {
   return e == EAGAIN || e == EWOULDBLOCK || e == ENOMEM || e == EINTR;
-}
-
-// ---- Show button (aggregated over clients) ---------------------------------------------
-static bool wsAnyButtonHeld(uint32_t now) {
-  for (int i = 0; i < WS_SLOTS; i++) {
-    const WsConn& c = g_ws[i];
-    if (c.state == WS_OPEN && c.btnHeld && (now - c.btnMs) <= BTN_DEADMAN_MS) return true;
-  }
-  return false;
-}
-
-static void wsReleaseButtonIfIdle() {
-  if (!wsAnyButtonHeld(millis())) engineSetShowButton(false);
 }
 
 // ---- Connection teardown --------------------------------------------------------------
@@ -426,15 +640,10 @@ static void wsReset(WsConn& c) {
   c.state = WS_FREE;
   c.rxLen = c.txLen = c.fragLen = 0;
   c.fragOpcode = 0;
-  c.btnHeld = false;
   c.saveAck = false;
 }
 
-static void wsDrop(WsConn& c) {
-  bool wasDashboard = (c.state == WS_OPEN || c.state == WS_CLOSING);
-  wsReset(c);
-  if (wasDashboard) wsReleaseButtonIfIdle();  // disconnect / replacement releases the button
-}
+static void wsDrop(WsConn& c) { wsReset(c); }
 
 // ---- Non-blocking TX ------------------------------------------------------------------
 static bool wsFlush(WsConn& c, uint32_t now) {
@@ -495,19 +704,17 @@ static void wsSendText(WsConn& c, const char* s, size_t n, uint32_t now) {
   wsSendFrame(c, 0x1, s, n, false, now);
 }
 
-// Sends a close frame, releases the client's button and lingers briefly to flush it.
+// Sends a close frame and lingers briefly to flush it.
 static void wsStartClose(WsConn& c, uint16_t code, uint32_t now) {
   if (c.state != WS_OPEN) { wsDrop(c); return; }
   uint8_t p[2] = {(uint8_t)(code >> 8), (uint8_t)code};
-  if (!wsSendFrame(c, 0x8, p, 2, false, now)) return;  // dropped (button already released)
+  if (!wsSendFrame(c, 0x8, p, 2, false, now)) return;  // dropped
   c.state = WS_CLOSING;
   c.closeMs = now;
   c.rxLen = 0;
   c.fragLen = 0;
   c.fragOpcode = 0;
-  c.btnHeld = false;
   c.saveAck = false;
-  wsReleaseButtonIfIdle();
 }
 
 // ---- Dashboard commands ---------------------------------------------------------------
@@ -516,19 +723,123 @@ static bool msgIs(const char* s, size_t n, const char* lit) {
   return n == ln && memcmp(s, lit, ln) == 0;
 }
 
-static void wsSendConfig(WsConn& c, uint32_t now) {
+// JSON string content: escapes '"', '\' and control characters (names are sanitized anyway).
+static size_t jsonEscape(char* out, size_t cap, const char* in) {
+  size_t o = 0;
+  for (; *in && o + 7 < cap; in++) {
+    unsigned char ch = (unsigned char)*in;
+    if (ch == '"' || ch == '\\') {
+      out[o++] = '\\';
+      out[o++] = (char)ch;
+    } else if (ch < 0x20) {
+      o += snprintf(out + o, cap - o, "\\u%04x", ch);
+    } else {
+      out[o++] = (char)ch;
+    }
+  }
+  out[o] = '\0';
+  return o;
+}
+
+static int buildConfigJson(char* buf, size_t cap) {
   config = engineGetConfig();
   const TuningConfig& k = config;
-  char buf[256];
-  int n = snprintf(buf, sizeof(buf),
-                   "CFG:{\"armed\":%s,\"launchRpm\":%d,\"redlineRpm\":%d,\"decelRpm\":%d,"
-                   "\"decelPops\":%s,\"cutPattern\":%d,\"maxCutSeconds\":%.2f,\"ghostCam\":%s,"
-                   "\"launchDrop\":%d,\"fw\":\"%s\"}",
-                   k.armed ? "true" : "false", k.launchRpm, k.redlineRpm, k.decelRpm,
-                   k.decelPops ? "true" : "false", k.cutPattern,
-                   isfinite(k.maxCutSeconds) ? (double)k.maxCutSeconds : 0.0,
-                   k.ghostCam ? "true" : "false", k.launchDrop, FW_VERSION);
+  char names[PROFILE_COUNT][PROFILE_NAME_BYTES * 6 + 1];
+  for (int i = 0; i < PROFILE_COUNT; i++) jsonEscape(names[i], sizeof(names[i]), g_profName[i]);
+  return snprintf(buf, cap,
+                  "CFG:{\"armed\":%s,\"launchRpm\":%d,\"redlineRpm\":%d,\"decelRpm\":%d,"
+                  "\"decelPops\":%s,\"cutPattern\":%d,\"maxCutSeconds\":%.2f,\"ghostCam\":%s,"
+                  "\"launchDrop\":%d,\"fw\":\"%s\",\"profile\":%u,\"profiles\":[\"%s\",\"%s\",\"%s\"]}",
+                  k.armed ? "true" : "false", k.launchRpm, k.redlineRpm, k.decelRpm,
+                  k.decelPops ? "true" : "false", k.cutPattern,
+                  isfinite(k.maxCutSeconds) ? (double)k.maxCutSeconds : 0.0,
+                  k.ghostCam ? "true" : "false", k.launchDrop, FW_VERSION, (unsigned)g_profActive,
+                  names[0], names[1], names[2]);
+}
+
+static void wsSendConfig(WsConn& c, uint32_t now) {
+  char buf[640];
+  int n = buildConfigJson(buf, sizeof(buf));
   if (n > 0 && n < (int)sizeof(buf)) wsSendText(c, buf, (size_t)n, now);
+}
+
+// Profile changes concern every connected dashboard: CFG goes to all of them.
+static void wsBroadcastConfig(uint32_t now) {
+  char buf[640];
+  int n = buildConfigJson(buf, sizeof(buf));
+  if (n <= 0 || n >= (int)sizeof(buf)) return;
+  for (int i = 0; i < WS_SLOTS; i++) {
+    if (g_ws[i].state == WS_OPEN) wsSendText(g_ws[i], buf, (size_t)n, now);
+  }
+}
+
+static void wsSendErr(WsConn& c, const char* msg, uint32_t now) {
+  char buf[160];
+  int n = snprintf(buf, sizeof(buf), "ERR:%s", msg);
+  if (n > 0 && n < (int)sizeof(buf)) wsSendText(c, buf, (size_t)n, now);
+}
+
+static bool parseSlot(const char* p, size_t n, uint8_t& slot) {
+  if (n != 1 || p[0] < '0' || p[0] >= '0' + PROFILE_COUNT) return false;
+  slot = (uint8_t)(p[0] - '0');
+  return true;
+}
+
+// Loads slot `slot` as the running config: ONE engineSetConfig (atomic in the engine), the global
+// master switch `armed` and the launch state machine are left as they are.
+static void profileLoad(uint8_t slot) {
+  TuningConfig c = g_profCfg[slot];
+  c.armed = engineGetConfig().armed;
+  engineClampConfig(c);
+  engineSetConfig(c);
+  config = engineGetConfig();
+  portENTER_CRITICAL(&g_profMux);
+  g_profActive = slot;
+  portEXIT_CRITICAL(&g_profMux);
+}
+
+// PROFILE:<n> | PROFILE_RESET | PROFILE_NAME:<n>:<name>. A refused command changes nothing and is
+// answered with ERR:<text> only.
+static void wsHandleProfile(WsConn& c, const char* s, size_t n, uint32_t now) {
+  uint8_t slot;
+  if (n >= 8 && memcmp(s, "PROFILE:", 8) == 0) {
+    if (!parseSlot(s + 8, n - 8, slot)) { wsSendErr(c, "Érvénytelen profil (0, 1 vagy 2)", now); return; }
+    profileLoad(slot);   // applied at once, also while driving / ARMED / HOLDING
+    nvsQueueStart(now);
+    g_nvsActiveDirty = true;
+    wsBroadcastConfig(now);
+    wsSendText(c, "ACK:PROFILE", 11, now);
+  } else if (n == 13 && memcmp(s, "PROFILE_RESET", 13) == 0) {
+    slot = g_profActive;
+    g_profCfg[slot] = profileFactory(slot);   // values only; the name is kept
+    profileLoad(slot);
+    nvsQueueStart(now);
+    g_nvsSlotDirty[slot] = g_nvsSchemaDirty = true;
+    wsBroadcastConfig(now);
+    wsSendText(c, "ACK:RESET", 9, now);
+  } else if (n >= 13 && memcmp(s, "PROFILE_NAME:", 13) == 0) {
+    const char* p = s + 13;
+    const char* colon = (const char*)memchr(p, ':', n - 13);
+    if (!colon || !parseSlot(p, (size_t)(colon - p), slot)) {
+      wsSendErr(c, "Érvénytelen profil (0, 1 vagy 2)", now);
+      return;
+    }
+    char clean[PROFILE_NAME_BYTES + 1];
+    if (!sanitizeName(colon + 1, (size_t)((s + n) - (colon + 1)), clean)) {
+      wsSendErr(c, "Üres vagy érvénytelen név, a régi név marad", now);
+      return;
+    }
+    if (strcmp(clean, g_profName[slot]) != 0) {
+      portENTER_CRITICAL(&g_profMux);
+      strcpy(g_profName[slot], clean);
+      portEXIT_CRITICAL(&g_profMux);
+      nvsQueueStart(now);
+      g_nvsNameDirty[slot] = g_nvsSchemaDirty = true;
+    }
+    wsBroadcastConfig(now);
+  } else {
+    wsSendErr(c, "Ismeretlen profilparancs", now);
+  }
 }
 
 static void wsHandleText(WsConn& c, const uint8_t* data, size_t len, uint32_t now) {
@@ -540,13 +851,9 @@ static void wsHandleText(WsConn& c, const uint8_t* data, size_t len, uint32_t no
   while (n && isspace((unsigned char)*s)) { s++; n--; }
   while (n && isspace((unsigned char)s[n - 1])) s[--n] = '\0';
 
-  if (msgIs(s, n, "BTN:1")) {
-    c.btnHeld = true;
-    c.btnMs = now;
-    engineSetShowButton(true);  // every refresh feeds the engine's dead-man
-  } else if (msgIs(s, n, "BTN:0")) {
-    c.btnHeld = false;
-    wsReleaseButtonIfIdle();
+  if (n >= 4 && memcmp(s, "BTN:", 4) == 0) {
+    // Show mode removed in v2.2: an old cached page may still send BTN:1 / BTN:0. Ignored
+    // silently; the engine's show button is never held (no remote 2-step over Wi-Fi).
   } else if (msgIs(s, n, "LAUNCH:ARM")) {
     engineLaunchArm();
   } else if (msgIs(s, n, "LAUNCH:DISARM")) {
@@ -556,11 +863,16 @@ static void wsHandleText(WsConn& c, const uint8_t* data, size_t len, uint32_t no
   } else if (n >= 8 && memcmp(s, "SET_CFG:", 8) == 0) {
     if (!applyConfigJson(s + 8, n - 8)) Serial.println("[WS] SET_CFG ignored: malformed JSON");
   } else if (msgIs(s, n, "SAVE_FLASH")) {
+    // The current config (except armed) goes into the ACTIVE slot, armed globally. Snapshot now;
+    // written by serviceSave() at a moment without spark cut, then ACK:SAVED.
+    TuningConfig cur = engineGetConfig();
+    nvsQueueStart(now);
+    g_profCfg[g_profActive] = cur;
+    g_armedToSave = cur.armed;
+    g_nvsSlotDirty[g_profActive] = g_nvsArmedDirty = g_nvsActiveDirty = g_nvsSchemaDirty = true;
     c.saveAck = true;
-    if (!g_savePending) {
-      g_savePending = true;
-      g_saveRequestMs = now;
-    }
+  } else if (n >= 7 && memcmp(s, "PROFILE", 7) == 0) {
+    wsHandleProfile(c, s, n, now);
   }
   // anything else: ignored
 }
@@ -851,7 +1163,6 @@ static void wsTryHandshake(WsConn& c, uint32_t now) {
   c.state = WS_OPEN;
   c.lastRxMs = now;
   c.lastPingMs = now;
-  c.btnHeld = false;
   c.fragOpcode = 0;
   c.fragLen = 0;
   Serial.println("[WS] dashboard connected");
@@ -883,7 +1194,6 @@ static void wsAccept(uint32_t now) {
     c.txProgressMs = now;
     c.rxLen = c.txLen = c.fragLen = 0;
     c.fragOpcode = 0;
-    c.btnHeld = false;
     c.saveAck = false;
   }
 }
@@ -936,10 +1246,6 @@ static void wsServiceSlot(WsConn& c, uint32_t now) {
       c.lastPingMs = now;
       wsSendFrame(c, 0x9, nullptr, 0, true, now);
       if (c.state == WS_FREE) return;
-    }
-    if (c.btnHeld && (now - c.btnMs) > BTN_DEADMAN_MS) {  // BTN:1 refresh stopped
-      c.btnHeld = false;
-      wsReleaseButtonIfIdle();
     }
   }
 }
@@ -999,20 +1305,25 @@ static void wsTelemetry(uint32_t now) {
 
 // ---- Deferred flash save --------------------------------------------------------------
 // An NVS write stalls the CPU (flash cache off) for a few ms up to a sector erase. Do it while
-// the engine is not cutting so a stall can never freeze the spark-cut output in the ON state.
+// the engine is not cutting so a stall can never freeze the spark-cut output in the ON state;
+// after 1 s of continuous cutting it is done anyway. Every NVS write of the glue goes through here.
 static void serviceSave(uint32_t now) {
-  if (!g_savePending) return;
+  if (!nvsAnyDirty()) return;
+  if ((int32_t)(now - g_nvsRetryAt) < 0) return;
   if (engineGetTelemetry().cutActive && (now - g_saveRequestMs) < SAVE_MAX_DEFER_MS) return;
-  g_savePending = false;
-  config = engineGetConfig();
-  bool ok = saveConfigToNVS(config);
-  if (!ok) Serial.println("[NVS] save FAILED");
+  bool ok = nvsWriteDirty();
   uint32_t t = millis();
-  for (int i = 0; i < WS_SLOTS; i++) {
+  if (!ok) {
+    Serial.println("[NVS] save FAILED, retrying in 2 s");
+    g_nvsRetryAt = t + 2000;
+    g_saveRequestMs = t;
+    return;
+  }
+  for (int i = 0; i < WS_SLOTS; i++) {   // SAVE_FLASH answered once its data is in flash
     WsConn& c = g_ws[i];
     if (c.state != WS_OPEN || !c.saveAck) continue;
     c.saveAck = false;
-    if (ok) wsSendText(c, "ACK:SAVED", 9, t);
+    wsSendText(c, "ACK:SAVED", 9, t);
   }
 }
 
@@ -1121,6 +1432,7 @@ void setup() {
   // Engine first: drives the spark-cut output to its safe (LOW) state as early as possible.
   loadConfigFromNVS();
   engineBegin(config);
+  engineSetShowButton(false);   // v2.2: the show mode is gone, the button is never held
   config = engineGetConfig();
 
   Serial.println("\n=== Suzuki Swift 1.3 8V Show Tuning v" FW_VERSION " Initializing ===");

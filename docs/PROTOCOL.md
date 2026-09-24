@@ -28,24 +28,30 @@ has been silent for 7 s or whose send queue stops draining for 3 s.
 | Message | Meaning |
 | --- | --- |
 | `T:<rpm>,<cut>,<launchState>,<launchLeftMs>,<reason>` | Telemetry, ~30 Hz. `rpm` is a model estimate inside cut gaps and is not capped at 8000. `cut` 0/1 = the clamp cut a spark within the last 60 ms. `launchState` 0 OFF, 1 ARMED, 2 HOLDING, 3 FIRED. `launchLeftMs` = remaining ARMED window. `reason` = `CutReason` below. Parsers must tolerate extra trailing fields and missing fields (old firmware sends only the first 3). |
-| `CFG:{json}` | Current config, sent in reply to `GET_CONFIG`. Keys below plus `"fw":"x.y.z"`. |
+| `CFG:{json}` | Current config, sent in reply to `GET_CONFIG` and after every profile command. Keys below plus `"fw":"x.y.z"`, `"profile"` and `"profiles"` (see *Profiles*). |
 | `ACK:SAVED` | Reply to `SAVE_FLASH` once the settings are in flash. Can take up to ~1 s: the write waits for a moment with no spark cut, because flash writes stall the CPU. |
+| `ACK:PROFILE` / `ACK:RESET` / `ERR:<text>` | See *Profiles (v2.2)*. |
 
 `reason` (`CutReason`): 0 none, 1 show button, 2 hands-free launch, 3 physical switch,
 4 redline, 5 decel pops, 6 ghost cam, 7 bench test (engine stopped), 8 anti-flood lock (a 100 %
 cut hit `maxCutSeconds`; the engine lets sparks through, `cut` can still be 1 because the
-limiter keeps working).
+limiter keeps working). Since v2.2 reasons 1 (show) and 7 (bench test, reachable only through
+the show button) no longer occur: the show mode was removed.
 
 ### Dashboard → firmware
 
 | Message | Meaning |
 | --- | --- |
-| `BTN:1` | Show-mode 2-step button held. **Re-sent every 200 ms while held** (dead-man). The glue and the engine each release the button if no `BTN:1` arrives for 600 ms; the glue also releases it when the client disconnects. |
-| `BTN:0` | Show-mode button released. |
 | `LAUNCH:ARM` / `LAUNCH:DISARM` | Arm / cancel hands-free launch control. Arming is ignored while the master arm is off or while already HOLDING. |
 | `GET_CONFIG` | Request a `CFG:` message. |
 | `SET_CFG:{json}` | Apply config: any subset of keys, applied immediately, not saved. The firmware clamps values into the ranges below and does not echo. Malformed JSON is rejected as a whole; an out-of-range `cutPattern` or a negative `maxCutSeconds` is ignored. The dashboard sends only changed keys, at most 10 messages/s, and never before the first `CFG` of a connection. |
-| `SAVE_FLASH` | Persist the current config to NVS. Answered with `ACK:SAVED`. |
+| `SAVE_FLASH` | Persist the current config to NVS (into the active profile, see *Profiles*). Answered with `ACK:SAVED`. |
+| `PROFILE:<n>` / `PROFILE_RESET` / `PROFILE_NAME:<n>:<name>` | See *Profiles (v2.2)*. |
+
+Since v2.2 there is no remote 2-step: the show mode (hold-to-pop button, `BTN:1` / `BTN:0`) was
+removed. The firmware ignores `BTN:` messages from an old cached page silently and never holds
+the engine's show button. Hands-free launch (`LAUNCH:ARM`) and the GPIO 23 switch are unchanged.
+Other unknown messages are ignored too (only unknown `PROFILE…` commands get an `ERR:`).
 
 The dashboard treats the connection as dead if no message arrives for 1500 ms and reconnects.
 
@@ -95,6 +101,33 @@ Protocol additions:
 | `PROFILE_RESET` | → firmware | Active slot back to its factory values: applied and saved. Replies with `CFG:` then `ACK:RESET`. |
 | `PROFILE_NAME:<n>:<name>` | → firmware | Rename slot `n` (saved). Replies with `CFG:`. |
 | `ERR:<Hungarian text>` | → dashboard | A command was refused (bad slot, bad name, …). |
+
+Details (firmware 2.2.0):
+
+* `CFG:` after `PROFILE`, `PROFILE_RESET` and `PROFILE_NAME` goes to every connected dashboard
+  (so a second phone follows the switch); `ACK:PROFILE` / `ACK:RESET` only to the sender, right
+  after the `CFG:`. Neither waits for the flash write; `ACK:SAVED` still means "in flash".
+* A switch is applied at once as ONE config update in the engine (no mixed state), also while
+  driving and while the hands-free launch is ARMED or HOLDING: the new `launchRpm` limits at once.
+  `armed`, the launch state and the GPIO 23 switch are not touched. `PROFILE:<n>` for the slot
+  that is already active reloads its saved values (unsaved edits are discarded).
+* `PROFILE_RESET` resets the values of the active slot; its name is kept.
+* Names: invalid UTF-8, control characters (C0, DEL, C1), `"` and `\` are dropped, surrounding
+  spaces trimmed; a longer name is shortened (not refused) to 12 characters / 24 bytes, never
+  inside a multi-byte character. `PROFILE_NAME` accepts `<n>` 0–2 and anything after the second
+  `:` as the name (it may contain `:`).
+* A refused command changes nothing and is answered with `ERR:` only (no `CFG:`):
+  `ERR:Érvénytelen profil (0, 1 vagy 2)` (bad or missing slot), `ERR:Üres vagy érvénytelen név,
+  a régi név marad`, `ERR:Ismeretlen profilparancs` (any other `PROFILE…` message).
+* Persisting: the active index, a slot and a name are written to NVS at the next moment without
+  spark cut (≤ 1 s later, then anyway), like `SAVE_FLASH`. A reboot before that returns to the
+  previously saved state.
+* A device without any saved settings starts in slot 1 with the `SHOW` factory values (ghost cam
+  on). A device updated from 2.0/2.1 keeps its saved config in slot 1 (migration above); the old
+  single-config keys stay in NVS untouched, so a downgrade to 2.1 finds the settings of the day
+  of the update.
+* The data logger stores the active profile with every capture and drive sector: the CSV config
+  blocks carry `profile` and `profile_name` (see *Data logger*).
 
 ## HTTP API (port 80)
 
@@ -198,7 +231,7 @@ checks the decoder against the C++ source and this section.
 | --- | --- |
 | `t_ms` | ms since boot |
 | `rpm` | RPM (model estimate when `est`=1) |
-| `cut`,`est`,`show`,`switch`,`armed`,`inhibit`,`fresh` | 0/1 flags: clamp cutting, estimated RPM, show button, GPIO 23 switch, master arm, engine inhibited (OTA), a fresh tach measurement since the previous sample |
+| `cut`,`est`,`show`,`switch`,`armed`,`inhibit`,`fresh` | 0/1 flags: clamp cutting, estimated RPM, show button (always 0 since v2.2), GPIO 23 switch, master arm, engine inhibited (OTA), a fresh tach measurement since the previous sample |
 | `launch` | 0 OFF, 1 ARMED, 2 HOLDING, 3 FIRED |
 | `reason` | `CutReason` (see above) |
 | `cut_slots`,`fired_slots` | ignition slots suppressed / fired since the previous sample (saturate at 255) |
@@ -213,7 +246,8 @@ Every CSV starts with `# key=value` comment lines, in this order:
 
 * capture: `fw`, `type`, `id`, `boot`, `t0_ms`, `trigger_ms`; the config snapshot `launchRpm`,
   `launchDrop`, `redlineRpm`, `cutPattern`, `maxCutSeconds`, `decelPops`, `decelRpm`,
-  `ghostCam`, `armed` (booleans 0/1); `EngineDiag` at the trigger `pulses`, `rejected`,
+  `ghostCam`, `armed` (booleans 0/1), `profile`, `profile_name` (v2.2; `-1` and empty for data
+  recorded by 2.1); `EngineDiag` at the trigger `pulses`, `rejected`,
   `discarded`, `outliers`, `unsyncs`, `cutSlots`, `floodTrips`, `dwellBlocks`,
   `launchDropRate`; `dur_ms`, `n`, `trace`, `trace_lost`, `also`; the type's summary fields;
   `sum`. Summary fields: launch `end` (`fired`/`lift`/`hold_timeout`/`arm_timeout`/`cancel`/
@@ -226,7 +260,9 @@ Every CSV starts with `# key=value` comment lines, in this order:
 * drive: `fw`, `type=drive`, `boot`, `t0_ms`, `dur_ms`, `n`, `gaps`, then `from_ms`, `to_ms`,
   `step` if a range or step was requested, then the config at the start of the drive. Inside
   the data: `# gap from_ms=<first lost> to_ms=<last lost> lost=<samples>` and, when the config
-  changed during the drive, `# config launchRpm=… armed=…`.
+  changed during the drive (also a profile switch), `# config launchRpm=… armed=… profile=…
+  profile_name=…` (`profile_name` is last and runs to the end of the line: names may contain
+  spaces). The config blocks of drive and live CSVs end with `profile` and `profile_name` too.
 * live: `fw`, `type=live`, `boot`, `t0_ms`, `sec`, `ringSec`, the current config and
   `EngineDiag`; `# gap lost=<n>` if the client was too slow for the ring.
 

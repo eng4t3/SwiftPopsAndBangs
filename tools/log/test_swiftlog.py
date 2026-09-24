@@ -83,6 +83,10 @@ def nibble_crc(data, crc=0):
     return ~crc & 0xFFFFFFFF
 
 
+# full drive sector: DRV_INFO (4 + 32 + 28 name) + 14 samples in page 0, then 15 pages x 21
+PER_SECTOR = 14 + 15 * 21
+
+
 def mk_samples(n, t0=1000, rpm=850, step=40, **kw):
     out = []
     for i in range(n):
@@ -108,7 +112,8 @@ class FirmwareParity(unittest.TestCase):
     def test_constants(self):
         for name in ["LOG_MAGIC", "LOG_FORMAT_VERSION", "LOG_SECTOR_SIZE", "LOG_PAGE_SIZE", "LOG_SECTOR_HDR",
                      "LOG_REC_HDR", "LOG_REC_MAX_PAYLOAD", "LOG_REGION_CAP", "LOG_REGION_DRIVE", "LOG_CAP_SECTORS",
-                     "DRV_SAMPLES_PER_REC", "CAP_SAMPLES_PER_REC", "CAP_TRACE_PER_REC", "LOG_SAMPLE_MS"]:
+                     "DRV_SAMPLES_PER_REC", "CAP_SAMPLES_PER_REC", "CAP_TRACE_PER_REC", "LOG_SAMPLE_MS",
+                     "LOG_SUM_MAX"]:
             self.assertEqual(cpp_define(name), getattr(sl, name), name)
         for name in ["REC_DRV_INFO", "REC_DRV_SAMPLES", "REC_DRV_GAP", "REC_CAP_BEGIN", "REC_CAP_SAMPLES",
                      "REC_CAP_TRACE", "REC_CAP_END", "SF_CUT", "SF_EST", "SF_SHOW", "SF_SWITCH", "SF_ARMED",
@@ -123,6 +128,9 @@ class FirmwareParity(unittest.TestCase):
         self.assertEqual(cpp_sizeof("DiagSnap"), struct.calcsize(sl.DIAG_FMT))
         self.assertEqual(cpp_sizeof("CapMeta"), sl.CAP_META_SIZE)
         self.assertEqual(cpp_sizeof("DrvInfo"), sl.DRV_INFO_SIZE)
+        self.assertEqual(cpp_sizeof("NameField"), sl.NAME_FIELD_SIZE)
+        body = CPP.split("struct CfgSnap {", 1)[1].split("};", 1)[0]
+        self.assertIn("uint8_t  profile1;", body)   # byte 12 = profile + 1 (CFG_FMT "<HHHHBBHB3x")
         self.assertEqual(cpp_sizeof("CapEnd"), struct.calcsize(sl.CAP_END_FMT))
         self.assertEqual(cpp_sizeof("EngineTraceEvent"), struct.calcsize(sl.TRACE_FMT))
         # field order of the 12-byte sample (C++ struct body)
@@ -204,8 +212,7 @@ class Records(unittest.TestCase):
         img = sl.LogImage(bytes(w.img))
         d = img.drives[7]
         self.assertEqual(d.n, 5000)
-        # full drive sector: DRV_INFO + 16 samples in page 0, then 15 pages x 21
-        per_sector = 16 + 15 * 21
+        per_sector = PER_SECTOR
         self.assertEqual(len(d.sectors), -(-5000 // per_sector))
         drive_sectors = img.n_sec - img.cap_sec
         minutes = drive_sectors * per_sector * sl.LOG_SAMPLE_MS / 60000.0
@@ -223,11 +230,11 @@ class Records(unittest.TestCase):
         img = bytearray(w.img)
         s = sl.LogImage(bytes(img)).drives[2].sectors[0]
         base = s * 4096
-        # corrupt the second record (first sample record is at offset 56 after DRV_INFO at 20)
-        img[base + 56 + 10] ^= 0x5A
+        # corrupt the second record (first sample record is at offset 84 after DRV_INFO at 20)
+        img[base + 84 + 10] ^= 0x5A
         li = sl.LogImage(bytes(img))
         self.assertEqual(li.bad_records, 1)
-        self.assertEqual(li.drives[2].n, 100 - 16)   # the 16 samples of the rest of page 0 are lost
+        self.assertEqual(li.drives[2].n, 100 - 14)   # the 14 samples of the rest of page 0 are lost
 
     def test_bad_header_is_dirty_and_blank_is_erased(self):
         w = sl.LogWriter()
@@ -244,7 +251,7 @@ class Records(unittest.TestCase):
 
     def test_wrap_order_and_clear_epoch(self):
         w = sl.LogWriter(n_sec=42)                         # capture 42 // 4 = 10, drive 32 sectors (firmware rule)
-        per_sector = 16 + 15 * 21
+        per_sector = PER_SECTOR
         for boot in range(1, 12):                          # 11 drives x 5 sectors > 32: the log wraps
             w.write_drive(boot, mk_samples(5 * per_sector, t0=0), sl.Config())
         li = sl.LogImage(bytes(w.img))
@@ -280,9 +287,9 @@ class Captures(unittest.TestCase):
         lines = text.split("\n")
         keys = [ln[2:].split("=", 1)[0] for ln in lines if ln.startswith("# ") and "=" in ln]
         self.assertEqual(keys[:6], ["fw", "type", "id", "boot", "t0_ms", "trigger_ms"])
-        self.assertEqual(keys[6:15], ["launchRpm", "launchDrop", "redlineRpm", "cutPattern", "maxCutSeconds",
-                                      "decelPops", "decelRpm", "ghostCam", "armed"])
-        self.assertEqual(keys[15:24], sl.DIAG_KEYS)
+        self.assertEqual(keys[6:17], ["launchRpm", "launchDrop", "redlineRpm", "cutPattern", "maxCutSeconds",
+                                      "decelPops", "decelRpm", "ghostCam", "armed", "profile", "profile_name"])
+        self.assertEqual(keys[17:26], sl.DIAG_KEYS)
         self.assertIn("# sum=FIRED, tartás 3752–3880 RPM, kioldás 118 ms", lines)
         self.assertIn("# end=fired", lines)
         self.assertIn("# release_ms=118", lines)
@@ -332,9 +339,10 @@ class Captures(unittest.TestCase):
 class DriveCsv(unittest.TestCase):
     def test_filters_gaps_and_config_changes(self):
         w = sl.LogWriter()
-        per_sector = 16 + 15 * 21
-        cfg2 = sl.Config(launchRpm=4000)
-        w.write_drive(4, mk_samples(3 * per_sector, t0=0), sl.Config(), gaps={100: (4000, 7960, 100)},
+        per_sector = PER_SECTOR
+        cfg2 = sl.Config(launchRpm=4000, profile=2, profile_name="Téli rajt")
+        w.write_drive(4, mk_samples(3 * per_sector, t0=0), sl.Config(profile=1, profile_name="SHOW"),
+                      gaps={100: (4000, 7960, 100)},
                       cfg_changes={per_sector: cfg2})
         d = sl.LogImage(bytes(w.img)).drives[4]
         self.assertEqual(d.gaps, 1)
@@ -342,12 +350,48 @@ class DriveCsv(unittest.TestCase):
         self.assertEqual(sl.check_csv(full), [])
         self.assertIn("# gap from_ms=4000 to_ms=7960 lost=100\n", full)
         self.assertIn("# config launchRpm=4000 launchDrop=400 redlineRpm=6200 cutPattern=1 maxCutSeconds=3.00 "
-                      "decelPops=1 decelRpm=3200 ghostCam=0 armed=1\n", full)
+                      "decelPops=1 decelRpm=3200 ghostCam=0 armed=1 profile=2 profile_name=Téli rajt\n", full)
+        self.assertIn("# profile=1\n# profile_name=SHOW\n", full)
         part = sl.drive_csv(d, from_ms=1000, to_ms=2000, step=5)
         rows = [ln for ln in part.split("\n") if ln and not ln.startswith("#") and not ln.startswith("t_ms")]
         self.assertEqual(len(rows), 6)                    # 1000..2000 ms = 26 samples, every 5th
         self.assertEqual(rows[0].split(",")[0], "1000")
         self.assertIn("# step=5\n", part)
+
+
+class Profiles(unittest.TestCase):
+    def test_skipped_page_start_is_not_end_of_data(self):
+        # a record written at page 1 while page 0 stayed blank (e.g. torn write) is still found
+        w = sl.LogWriter()
+        w.open_sector(sl.LOG_REGION_DRIVE, 1)
+        w.off[sl.LOG_REGION_DRIVE] = 256
+        w.write_rec(sl.LOG_REGION_DRIVE, sl.REC_DRV_SAMPLES, b"".join(s.pack() for s in mk_samples(3)))
+        s = w.head[sl.LOG_REGION_DRIVE]
+        recs = [r for r in sl.iter_records(bytes(w.img[s * 4096:(s + 1) * 4096]))]
+        self.assertEqual(recs[0][0], 256)
+        self.assertEqual(recs[-1][0], "end")
+
+
+    def test_capture_profile_roundtrip_and_old_records(self):
+        w = sl.LogWriter()
+        m = mk_meta(3)
+        m.cfg = sl.Config(profile=0, profile_name="Árvíztűrő tü")
+        w.write_capture(m, "x" * 200, mk_samples(10), [], boot=1)
+        c = sl.LogImage(bytes(w.img)).capture(3)
+        self.assertIsNotNone(c)
+        self.assertEqual(len(c.sum.encode()), sl.LOG_SUM_MAX)   # summary limit leaves room for the name
+        text = sl.capture_csv(c)
+        self.assertIn("# profile=0\n# profile_name=Árvíztűrő tü\n", text)
+        self.assertEqual(sl.check_csv(text), [])
+        # a 2.1 BEGIN record: no NameField, profile byte 0
+        w2 = sl.LogWriter()
+        m2 = mk_meta(4)
+        w2.write_capture(m2, "régi", mk_samples(5), [], boot=1)
+        img = bytearray(w2.img)
+        li = sl.LogImage(bytes(img))
+        c2 = li.capture(4)
+        self.assertEqual(c2.meta.cfg.profile, -1)
+        self.assertIn("# profile=-1\n# profile_name=\n", sl.capture_csv(c2))
 
 
 class CsvCheck(unittest.TestCase):
