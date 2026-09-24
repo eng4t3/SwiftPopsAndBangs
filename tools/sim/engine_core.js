@@ -117,6 +117,54 @@ const SW_DEBOUNCE_STEPS = 10;
 
 const SEQ_NONE = 0, SEQ_CYCLE = 1, SEQ_CANNON_CUT = 2, SEQ_CANNON_FIRE = 3;
 
+// ---- trace ring (data logger), see engineReadTrace() -------------------------------------
+// One EngineTraceEvent per event, recorded inside the ISRs (engMux already held): an index mask
+// and four stores. tUs = micros() of the event (TR_CUT_SLOT: when the predicted event was
+// processed, ~T/8 after the suppressed spark), periodUs = slot-period estimate (0 = no estimate).
+// `info` per kind:
+//   TR_PULSE     bits 0-3 slots the interval spanned = compensation divisor (1 = consecutive fired
+//                slots, 4 = flames cycle; 0 = first pulse / interval not measurable; saturates 15)
+//                bit 4 a cut was refused by the dwell interlock   bit 5 the next slot is cut
+//                bit 6 pulse was on time (a new cut may start)    bit 7 measurement accepted (fresh)
+//   TR_CUT_SLOT  bits 0-3 position of this suppressed slot since the last real pulse (1 = first,
+//                saturates 15)   bits 4-5 sequencer after the decision (0 none, 1 pattern cycle,
+//                2 cannon silence, 3 cannon bang)   bit 7 the next slot is cut too (else released)
+//   TR_OUTLIER   1 held back as candidate, 2 split slot merged (1 slot), 3 split merged (2 slots),
+//                4 candidate adopted (estimate re-based), 5 discarded (gap too long / slot count
+//                unknown), 6 held back and the stale estimate dropped
+//   TR_REJECT    bits 0-2 why: 1 pin read HIGH (dwell-edge glitch), 2 < 3 ms after a pulse (coil
+//                ringing), 3 while clamped, 4 early (noise gate)   bits 3-7 rejected edges NOT
+//                recorded since the previous TR_REJECT (saturates 31). Rate limit: at most one
+//                TR_REJECT per ignition slot, so ringing can never flood the ring.
+//   TR_CLAMP_ON  CutReason that engaged the clamp
+//   TR_CLAMP_OFF CutReason that had the clamp; bit 7 = forced by engineSetInhibit()
+//   TR_UNSYNC    1 fired slot's pulse missing, 2 clamp without slot clock / cut gap too long,
+//                3 predicted event overdue (ISR postponed, e.g. flash write)
+//   TR_STATE     launchState | reason << 4 (telemetry reason), recorded on change (slow step)
+const ENGINE_TRACE_LEN = 512;
+const TR_PULSE = 0;
+const TR_CUT_SLOT = 1;
+const TR_OUTLIER = 2;
+const TR_REJECT = 3;
+const TR_CLAMP_ON = 4;
+const TR_CLAMP_OFF = 5;
+const TR_UNSYNC = 6;
+const TR_STATE = 7;
+const TRJ_PIN = 1;
+const TRJ_RING = 2;
+const TRJ_CLAMPED = 3;
+const TRJ_EARLY = 4;
+const TRO_HELD = 1;
+const TRO_SPLIT1 = 2;
+const TRO_SPLIT2 = 3;
+const TRO_ADOPT = 4;
+const TRO_DISCARD = 5;
+const TRO_STALE = 6;
+const TRU_NOPULSE = 1;
+const TRU_GAP = 2;
+const TRU_LATE = 3;
+const TRACE_READ_CHUNK = 64;
+
 function engineDefaultConfig() {
   return {
     armed: true, launchRpm: 3800, redlineRpm: 6200, decelPops: true, decelRpm: 3200,
@@ -188,6 +236,10 @@ function createCore(hw) {
   const tel = { rpm: 0, cutActive: false, launchState: 0, launchLeftMs: 0, reason: 0,
     showActive: false, switchActive: false, rpmEstimated: false, measAgeMs: SAT_MS, launchEnd: 0 };
   const diag = { pulses: 0, rejected: 0, discarded: 0, outliers: 0, unsyncs: 0, cutSlots: 0, floodTrips: 0, dwellBlocks: 0, launchDropRate: 0 };
+  let firedSlots = 0;
+  // trace ring
+  const trBuf = []; for (let k = 0; k < ENGINE_TRACE_LEN; k++) trBuf.push({ tUs: 0, periodUs: 0, kind: 0, info: 0 });
+  let trSeq = 0, trRejArmed = true, trRejSkipped = 0, trLastState = 0;
 
   // =======================================================================================
   // helpers
@@ -195,16 +247,32 @@ function createCore(hw) {
   function predMargin(T) { const m = udiv(T, PRED_MARGIN_DIV); return m < PRED_MARGIN_MIN_US ? PRED_MARGIN_MIN_US : m; }
   function absDiff(a, b) { const d = s32(a - b); return u32(d < 0 ? -d : d); }
 
+  function trRec(t, kind, info) {
+    const i = trSeq & (ENGINE_TRACE_LEN - 1);
+    trBuf[i].tUs = t;
+    trBuf[i].periodUs = (!synced ? 0 : (slotPeriodUs > 65535 ? 65535 : slotPeriodUs));
+    trBuf[i].kind = kind;
+    trBuf[i].info = info;
+    trSeq = u32(trSeq + 1);
+  }
+
+  function trReject(t, why) {
+    if (trRejArmed) { trRec(t, TR_REJECT, (why | (trRejSkipped << 3))); trRejArmed = false; trRejSkipped = 0; }
+    else if (trRejSkipped < 31) trRejSkipped++;
+  }
+
   function clampSet(on, now) {
     if (on) {
       if (inhibitCut) return;
       if (!clampOn) {
         clampOn = true; clampOnSinceUs = now; hw.clamp(true);
         lastCutReason = benchActive ? CUT_BENCH : seqReason;
+        trRec(now, TR_CLAMP_ON, lastCutReason);
       }
       clampLatch = true; cutGap = true;
     } else if (clampOn) {
       clampOn = false; hw.clamp(false);
+      trRec(now, TR_CLAMP_OFF, lastCutReason);
     }
   }
 
@@ -357,21 +425,22 @@ function createCore(hw) {
     if (hw.log) hw.log('edge', now, { pinLow, clampOn, synced, slotPeriodUs, lastEventUs, lastRealUs, slotsSinceReal, periodUs });
     edgeFlag = true;
     if (benchActive) { benchActive = false; clampSet(false, now); }
-    if (!pinLow) { diag.rejected++; return; }
+    if (!pinLow) { diag.rejected++; trReject(now, TRJ_PIN); return; }
     if (havePrev) {
       const dtRaw = u32(now - lastRealUs);
-      if (dtRaw < MIN_PERIOD_US) { diag.rejected++; return; }
-      if (clampOn) { diag.rejected++; return; }              // no dwell while clamped -> cannot be a spark
+      if (dtRaw < MIN_PERIOD_US) { diag.rejected++; trReject(now, TRJ_RING); return; }
+      if (clampOn) { diag.rejected++; trReject(now, TRJ_CLAMPED); return; }   // no dwell while clamped -> no spark
       // Adaptive noise gate (coil ringing, dwell-start glitches). Relative to the shorter of the estimate and
       // a pending candidate, so a stale estimate during a fast rev-up can never reject real pulses.
       const gateT = (candPer !== 0 && candPer < slotPeriodUs) ? candPer : slotPeriodUs;
       if (synced && gateT < BLANK_MAX_PERIOD && u32(now - lastEventUs) < udiv(gateT * BLANK_PCT, 100)) {
-        diag.rejected++; return;
+        diag.rejected++; trReject(now, TRJ_EARLY); return;
       }
     }
 
-    pulseFlag = true; diag.pulses++;
+    pulseFlag = true; diag.pulses++; trRejArmed = true;
     let fresh = false;
+    let nInfo = 0;
     if (havePrev) {
       const dt = u32(now - lastRealUs);
       lastGapUs = dt; everPulsed = true;
@@ -394,16 +463,18 @@ function createCore(hw) {
         if (ringLen > 0 && absDiff(per, periodUs) <= udiv(periodUs * JUMP_TOL_PCT, 100)) {
           accDt = dt; accN = n;
         } else if (splitDt !== 0 && n === 1 && ringLen > 0 && absDiff(splitDt + dt, periodUs) <= udiv(periodUs * SPLIT_TOL_PCT, 100)) {
-          accDt = splitDt + dt; accN = 1; diag.outliers++;
+          accDt = splitDt + dt; accN = 1; diag.outliers++; trRec(now, TR_OUTLIER, TRO_SPLIT1);
         } else if (splitDt !== 0 && n === 1 && ringLen > 0 && absDiff(splitDt + dt, 2 * periodUs) <= udiv(periodUs * SPLIT_TOL_PCT, 100)) {
-          accDt = splitDt + dt; accN = 2; diag.outliers++;
+          accDt = splitDt + dt; accN = 2; diag.outliers++; trRec(now, TR_OUTLIER, TRO_SPLIT2);
         } else if (candPer !== 0 && absDiff(per, candPer) <= udiv(candPer * CAND_TOL_PCT, 100)) {
-          ringFlush(); ringPush(candDt, candN); accDt = dt; accN = n;
+          ringFlush(); ringPush(candDt, candN); accDt = dt; accN = n; trRec(now, TR_OUTLIER, TRO_ADOPT);
         } else {
           candDt = dt; candN = n; candPer = per; diag.outliers++;
           splitDt = (n === 1 && ringLen > 0 && per * 100 < periodUs * (100 - JUMP_TOL_PCT)) ? dt : 0;
-          if (++candRun >= CAND_STALE_RUN) ringFlush();      // stale estimate: gate off until re-established
+          if (++candRun >= CAND_STALE_RUN) { ringFlush(); trRec(now, TR_OUTLIER, TRO_STALE); }   // stale estimate: gate off
+          else trRec(now, TR_OUTLIER, TRO_HELD);
         }
+        nInfo = accN !== 0 ? accN : n;
         if (accN !== 0) {
           ringPush(accDt, accN); candPer = 0; candRun = 0; splitDt = 0;
           if (accN <= 2) cleanFlag = true;
@@ -413,7 +484,7 @@ function createCore(hw) {
           measSeq = u32(measSeq + 1); fresh = true;
         }
       } else {
-        ringFlush(); candPer = 0; splitDt = 0; diag.discarded++;
+        ringFlush(); candPer = 0; splitDt = 0; diag.discarded++; trRec(now, TR_OUTLIER, TRO_DISCARD);
         if (hw.log) hw.log('discard', now, { dt, n, slotsSinceReal, synced });
       }
     }
@@ -425,11 +496,15 @@ function createCore(hw) {
     let cut = synced && decideNext(now, fresh, onTime, true);
     // Dwell interlock (coil- tach wiring): GPIO18 HIGH = igniter dwelling. Never clamp then, whatever the
     // scheduler thinks - that would abort the dwell and fire a premature spark.
-    if (cut && !hw.tachLowNow()) { cut = false; seqReset(); diag.dwellBlocks++; }
+    const blocked = cut && !hw.tachLowNow();
+    if (blocked) { cut = false; seqReset(); diag.dwellBlocks++; }
+    trRec(now, TR_PULSE, ((nInfo > 15 ? 15 : nInfo) | (blocked ? 0x10 : 0) | (cut ? 0x20 : 0) |
+                          (onTime ? 0x40 : 0) | (fresh ? 0x80 : 0)));
     if (cut) {
       clampSet(true, now);
       nextEventUs = u32(now + slotPeriodUs + predMargin(slotPeriodUs));
     } else {
+      firedSlots++;
       clampSet(false, now);
     }
   }
@@ -438,13 +513,15 @@ function createCore(hw) {
   function predictedEvent(now) {
     lastEventUs = u32(lastEventUs + slotPeriodUs);
     slotsSinceReal++;
-    diag.cutSlots++;
+    diag.cutSlots++; trRejArmed = true;
     let r = modelRpmAt(lastEventUs);
     if (r < MODEL_MIN_RPM) r = MODEL_MIN_RPM;
     const T = udiv(RPM_CONST, r);
     slotPeriodUs = T > MAX_PERIOD_US ? MAX_PERIOD_US : T;
-    if (decideNext(now, false, false, false)) nextEventUs = u32(lastEventUs + slotPeriodUs + predMargin(slotPeriodUs));
-    else clampSet(false, now);
+    const cutNext = decideNext(now, false, false, false);
+    trRec(now, TR_CUT_SLOT, ((slotsSinceReal > 15 ? 15 : slotsSinceReal) | (seqMode << 4) | (cutNext ? 0x80 : 0)));
+    if (cutNext) nextEventUs = u32(lastEventUs + slotPeriodUs + predMargin(slotPeriodUs));
+    else { firedSlots++; clampSet(false, now); }
   }
 
   // =======================================================================================
@@ -648,6 +725,8 @@ function createCore(hw) {
     tel.rpmEstimated = cutGap && !stopped;
     tel.measAgeMs = measAgeMs;
     tel.launchEnd = launchEnd;
+    const st = (launchState | (reason << 4));
+    if (st !== trLastState) { trLastState = st; trRec(now, TR_STATE, st); }
   }
 
   function onTick(now) {
@@ -657,15 +736,18 @@ function createCore(hw) {
     } else if (!benchActive) {
       if (clampOn) {
         if (!synced || u32(now - lastRealUs) > MAX_CUT_GAP_US) {
+          trRec(now, TR_UNSYNC, TRU_GAP); firedSlots++;
           clampSet(false, now); seqReset(); synced = false; diag.unsyncs++;
         } else if (s32(now - nextEventUs) >= 0) {
           if (u32(now - nextEventUs) > udiv(slotPeriodUs, 2)) {
+            trRec(now, TR_UNSYNC, TRU_LATE); firedSlots++;
             clampSet(false, now); seqReset(); synced = false; diag.unsyncs++;   // late tick (flash stall)
           } else {
             predictedEvent(now);
           }
         }
       } else if (synced && u32(now - lastEventUs) > udiv(slotPeriodUs * FIRE_TIMEOUT_PCT, 100)) {
+        trRec(now, TR_UNSYNC, TRU_NOPULSE);
         synced = false; seqReset(); diag.unsyncs++;
       }
     }
@@ -692,12 +774,42 @@ function createCore(hw) {
   function engineLaunchDisarm() {
     if (launchState !== LAUNCH_OFF || verifyLift) { launchState = LAUNCH_OFF; launchEnd = LAUNCH_END_CANCEL; verifyLift = false; }
   }
-  function engineSetInhibit(inh) {
+  function engineSetInhibit(inh, nowUs) {
     inhibitCut = inh;
     if (inh) {
-      if (clampOn) { clampOn = false; } hw.clamp(false);
+      if (clampOn) { clampOn = false; trRec(u32(nowUs || 0), TR_CLAMP_OFF, lastCutReason | 0x80); } hw.clamp(false);
       benchActive = false; seqReset();
     }
+  }
+
+  function engineGetSlotCounters() {
+    return { realPulses: diag.pulses, firedSlots, cutSlots: diag.cutSlots, unsyncs: diag.unsyncs };
+  }
+
+  // Mirror of engineReadTrace(): returns { events, seq, lost } instead of writing through pointers.
+  function engineReadTrace(max, seqIn) {
+    let lostCnt = 0, n = 0, seq = u32(seqIn);
+    const events = [];
+    while (n < max) {
+      const head = trSeq;
+      let from = seq;
+      if (u32(head - from) > ENGINE_TRACE_LEN) {
+        const oldest = u32(head - ENGINE_TRACE_LEN);
+        if (from !== 0) lostCnt += u32(oldest - from);
+        from = oldest;
+      }
+      const avail = u32(head - from);
+      let chunk = avail < TRACE_READ_CHUNK ? avail : TRACE_READ_CHUNK;
+      if (chunk > max - n) chunk = max - n;
+      for (let i = 0; i < chunk; i++) {
+        const e = trBuf[(from + i) & (ENGINE_TRACE_LEN - 1)];
+        events.push({ seq: u32(from + i + 1), tUs: e.tUs, periodUs: e.periodUs, kind: e.kind, info: e.info });
+      }
+      seq = u32(from + chunk);
+      n += chunk;
+      if (chunk === 0 || chunk === avail) break;
+    }
+    return { events, seq, lost: lostCnt };
   }
 
   return {
@@ -705,6 +817,7 @@ function createCore(hw) {
     engineSetShowButton, engineLaunchArm, engineLaunchDisarm, engineSetInhibit,
     engineGetTelemetry: () => Object.assign({}, tel), engineGetRpm: () => tel.rpm,
     engineGetDiag: () => Object.assign({}, diag),
+    engineGetSlotCounters, engineReadTrace,
     tachIsr: (now, pinLow) => onTachEdge(u32(now), pinLow),
     tickIsr: (now) => onTick(u32(now)),
     // introspection for the simulator only
@@ -719,4 +832,5 @@ module.exports = {
   LAUNCH_END_NONE, LAUNCH_END_FIRED, LAUNCH_END_LIFT, LAUNCH_END_HOLD_TIMEOUT, LAUNCH_END_ARM_TIMEOUT,
   LAUNCH_END_CANCEL, LAUNCH_END_STALL,
   CUT_NONE, CUT_SHOW, CUT_LAUNCH, CUT_SWITCH, CUT_REDLINE, CUT_DECEL, CUT_GHOST, CUT_BENCH, CUT_FLOOD_LOCK,
+  ENGINE_TRACE_LEN, TR_PULSE, TR_CUT_SLOT, TR_OUTLIER, TR_REJECT, TR_CLAMP_ON, TR_CLAMP_OFF, TR_UNSYNC, TR_STATE,
 };

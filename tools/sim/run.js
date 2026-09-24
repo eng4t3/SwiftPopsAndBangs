@@ -57,7 +57,7 @@ function simulate(sc) {
   const acts = (sc.actions || []).slice().sort((a, b) => a.at - b.at);
   let ai = 0;
   let phoneHeld = false, phoneConnected = true, nextRefresh = 0, lastRefresh = -1;
-  let nextTick = 0, nextLoop = 0, nextRec = 0;
+  let nextTick = 0, nextLoop = 0, nextRec = 0, nextHook = 0;
   const events = [];
   let lastState = -1;
   const dur = sc.dur * 1e6;
@@ -76,7 +76,7 @@ function simulate(sc) {
         case 'stop': plant.stop(); break;
         case 'start': plant.start(a.rpm); break;
         case 'edge': inject.push(t); plant.pushEdge(t, true); break;
-        case 'inhibit': c.engineSetInhibit(a.v); break;
+        case 'inhibit': c.engineSetInhibit(a.v, (t0 + t) >>> 0); break;
         case 'cfg': Object.assign(cfg, a.v); c.engineSetConfig(cfg); break;
         case 'gear': plant.inertia = a.inertia; plant.road = a.road || 0; break;
         case 'tachoff': plant.tachOn = false; break;
@@ -95,6 +95,7 @@ function simulate(sc) {
       if (orig) { c.loop((t0 + Math.round(nextLoop)) >>> 0, swLow); nextLoop += 30 + ((nextLoop / 7) % 20); }
       else { c.tickIsr((t0 + nextTick) >>> 0); nextTick += TICK; }
     }
+    if (sc.hook && t >= nextHook) { nextHook += sc.hookEveryMs * 1000; sc.hook(c, t / 1e6); }
     if (t >= nextRec) {
       nextRec += 1000;
       const tel = c.engineGetTelemetry();
@@ -259,6 +260,98 @@ function decelScenarios() {
     { name: 'decel gentle part-throttle', seed: 3005, dur: 6.0, cfg: {}, plant: { rpm0: 3000, inertia: 3, road: 300 }, kind: 'decel',
       actions: [{ at: 0.2, do: 'thr', v: 0.55 }, { at: 3.0, do: 'thr', v: 0.45 }], lifts: [], expectBursts: 0 },
   ];
+}
+
+// Data-logger trace: read the ring like the logger task (every 40 ms, <= 256 events) during a
+// pattern-1 launch and check the per-slot sequence while HOLDING: every cut run must be
+// CLAMP_ON(launch) -> CUT_SLOT 1,2,3 -> CLAMP_OFF -> PULSE spanning 4 slots (flames cut 3 / fire 1).
+function traceScenario() {
+  const sc = launchScenario(1, 'typical', { name: 'trace: launch flames, per-slot sequence', seed: 9001 });
+  sc.kind = 'trace';
+  sc.trace = { events: [], seq: 0, lost: 0, gaps: 0, reads: 0, counters: {} };
+  sc.hookEveryMs = 40;
+  sc.hook = (c, ts) => {
+    const tr = sc.trace;
+    const r = c.engineReadTrace(256, tr.seq);
+    tr.reads++; tr.lost += r.lost;
+    for (const e of r.events) { if (tr.events.length && e.seq !== tr.events[tr.events.length - 1].seq + 1) tr.gaps++; tr.events.push(Object.assign({ tSim: ts }, e)); }
+    tr.seq = r.seq;
+    for (const mark of [3.0, 6.9]) if (!tr.counters[mark] && ts >= mark) tr.counters[mark] = Object.assign({ seq: tr.seq }, c.engineGetSlotCounters());
+    if (!tr.lateRead && ts >= 8.9) {   // a reader that fell far behind: must report the loss and get the newest 512
+      const old = c.engineReadTrace(4096, 1);
+      tr.lateRead = { n: old.events.length, lost: old.lost, firstSeq: old.events.length ? old.events[0].seq : 0, lastSeq: old.seq };
+      tr.lateHead = tr.seq;
+    }
+  };
+  return sc;
+}
+
+function checkTrace(res) {
+  const sc = res.sc, tr = sc.trace, out = { pass: true, notes: [] };
+  const T0u = (4294967296 - 3000000);
+  const tSim = (e) => ((e.tUs - T0u) >>> 0) / 1e6;
+  if (tr.lost !== 0 || tr.gaps !== 0) { out.pass = false; out.notes.push(`reader lost ${tr.lost}, seq gaps ${tr.gaps}`); }
+  const tHold = eventTime(res, core.LAUNCH_HOLDING, 1.0);
+  const w0 = tHold + 0.5, w1 = sc.dropAt;
+  const ev = tr.events.filter((e) => tSim(e) >= w0 && tSim(e) < w1);
+  // parse cut runs
+  let runs = 0, flames = 0, bad = 0, i = 0, pulses1 = 0;
+  const shapes = {};
+  while (i < ev.length) {
+    const e = ev[i];
+    if (e.kind === core.TR_CLAMP_ON) {
+      const prev = ev[i - 1];
+      const okPrev = prev && prev.kind === core.TR_PULSE && (prev.info & 0x20) && prev.tUs === e.tUs && e.info === core.CUT_LAUNCH;
+      let k = 0, j = i + 1, okSeq = true;
+      while (j < ev.length && ev[j].kind === core.TR_CUT_SLOT) {
+        k++;
+        const pos = ev[j].info & 15, cont = (ev[j].info & 0x80) !== 0;
+        if (pos !== k) okSeq = false;
+        j++;
+        if (!cont) break;
+      }
+      const off = ev[j], pulse = ev[j + 1];
+      const okEnd = off && off.kind === core.TR_CLAMP_OFF && pulse && pulse.kind === core.TR_PULSE && (pulse.info & 15) === k + 1 && (pulse.info & 0x80);
+      if (j >= ev.length - 1) break;   // run cut by the window end
+      runs++;
+      shapes[k] = (shapes[k] || 0) + 1;
+      if (!(okPrev && okSeq && okEnd)) bad++;
+      else if (k === 3) flames++;
+      i = j + 1;
+      continue;
+    }
+    if (e.kind === core.TR_PULSE && (e.info & 15) === 1) pulses1++;
+    i++;
+  }
+  out.runs = runs; out.flames = flames; out.bad = bad; out.shapes = shapes; out.pulses1 = pulses1;
+  if (runs < 50) { out.pass = false; out.notes.push(`only ${runs} cut runs`); }
+  if (bad) { out.pass = false; out.notes.push(`${bad} malformed cut runs`); }
+  if (flames < 0.9 * runs) { out.pass = false; out.notes.push(`only ${flames}/${runs} runs are cut 3 / fire 1`); }
+  if (ev.some((e) => e.kind === core.TR_UNSYNC)) { out.pass = false; out.notes.push('unsync while holding'); }
+  // counters vs trace over [3.0, 6.9)
+  const c0 = tr.counters[3.0], c1 = tr.counters[6.9];
+  const between = tr.events.filter((e) => e.seq > c0.seq && e.seq <= c1.seq);
+  const nP = between.filter((e) => e.kind === core.TR_PULSE).length, nC = between.filter((e) => e.kind === core.TR_CUT_SLOT).length;
+  out.cnt = { pulses: c1.realPulses - c0.realPulses, cut: c1.cutSlots - c0.cutSlots, fired: c1.firedSlots - c0.firedSlots, trP: nP, trC: nC };
+  if (out.cnt.pulses !== nP || out.cnt.cut !== nC) { out.pass = false; out.notes.push(`counters ${JSON.stringify(out.cnt)} disagree with the trace`); }
+  if (Math.abs(out.cnt.fired - out.cnt.pulses) > 2) { out.pass = false; out.notes.push(`fired ${out.cnt.fired} vs pulses ${out.cnt.pulses}`); }
+  // state changes: ARMED -> HOLDING (reason launch) -> FIRED
+  const states = tr.events.filter((e) => e.kind === core.TR_STATE).map((e) => e.info & 15);
+  const seqStates = states.filter((s, k) => k === 0 || s !== states[k - 1]);
+  out.states = seqStates.join('>');
+  if (!/1>2>3/.test(out.states)) { out.pass = false; out.notes.push(`state trace ${out.states}`); }
+  if (!tr.events.some((e) => e.kind === core.TR_STATE && (e.info & 15) === 2 && (e.info >> 4) === core.CUT_LAUNCH)) { out.pass = false; out.notes.push('no HOLDING|launch-cut state record'); }
+  // periodUs sanity while holding: 3800 rpm -> ~7900 us
+  const per = ev.filter((e) => e.kind === core.TR_PULSE).map((e) => e.periodUs);
+  out.per = stats(per);
+  if (out.per.min < 7000 || out.per.max > 8900) { out.pass = false; out.notes.push(`periodUs ${out.per.min}..${out.per.max}`); }
+  // lost path
+  const lr = tr.lateRead;
+  out.late = lr;
+  if (!lr || lr.n !== core.ENGINE_TRACE_LEN || lr.lost !== lr.firstSeq - 2 || lr.lastSeq !== lr.firstSeq + core.ENGINE_TRACE_LEN - 1) {
+    out.pass = false; out.notes.push(`late reader ${JSON.stringify(lr)}`);
+  }
+  return out;
 }
 
 function decelReaccelScenarios() {
@@ -618,6 +711,13 @@ function runAll(opts) {
   {
     const res = simulate(deadmanScenario()); const m = checkDeadman(res);
     row(res.sc.name, m.pass, `hold ${f0(m.hold.min)}..${f0(m.hold.max)} released ${f0(m.releaseMs)}ms after last BTN:1, then max ${f0(m.after.max)} ${m.notes.join('; ')}`);
+  }
+  // data-logger trace
+  {
+    const res = simulate(traceScenario()); const m = checkTrace(res);
+    row(res.sc.name, m.pass, `${m.flames}/${m.runs} cut runs = CLAMP_ON,CUT_SLOT 1-3,CLAMP_OFF,PULSE(n=4) (shapes ${JSON.stringify(m.shapes)}), ` +
+      `${res.sc.trace.events.length} events in ${res.sc.trace.reads} reads, lost 0; counters=trace ${m.cnt.pulses}/${m.cnt.cut}; ` +
+      `states ${m.states}; late reader lost ${m.late && m.late.lost} ${m.notes.join('; ')}`);
   }
   // (h) bench
   for (const sc of benchScenarios()) {

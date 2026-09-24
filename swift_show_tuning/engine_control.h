@@ -155,6 +155,9 @@ struct EngineSlotCounters {
 EngineSlotCounters engineGetSlotCounters();
 
 // Per-ignition-event trace ring recorded inside the ISRs (last ENGINE_TRACE_LEN events).
+// Events are in sequence order; timestamps are monotonic. TR_REJECT is rate-limited to one
+// record per ignition slot (its info carries the count of unrecorded rejects). At 7500 rpm the
+// ring holds ~1.3 s of history, so polling every 40 ms never loses events.
 #define ENGINE_TRACE_LEN 512
 enum TraceKind : uint8_t {
   TR_PULSE     = 0,  // real tach pulse (a spark that fired)
@@ -175,5 +178,6 @@ struct EngineTraceEvent {  // 8 bytes
 // Copies the events recorded after sequence number *seq (oldest first, at most `max`) into
 // `out` and advances *seq past the last one copied. Pass *seq = 0 to get the whole ring.
 // If the reader fell more than ENGINE_TRACE_LEN events behind, the oldest were overwritten:
-// *lost (optional) receives how many were skipped. Safe to call from any task (not from an ISR).
+// *lost (optional) receives how many were skipped (never reported for *seq = 0). Safe to call from
+// any task (not from an ISR); the spinlock is held for at most 64 events at a time.
 size_t engineReadTrace(EngineTraceEvent* out, size_t max, uint32_t* seq, uint32_t* lost = nullptr);

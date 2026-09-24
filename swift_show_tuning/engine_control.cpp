@@ -128,6 +128,46 @@ static const uint8_t  SW_DEBOUNCE_STEPS  = 10;       // 20 ms
 
 enum : uint8_t { SEQ_NONE = 0, SEQ_CYCLE = 1, SEQ_CANNON_CUT = 2, SEQ_CANNON_FIRE = 3 };
 
+// ---- trace ring (data logger), see engineReadTrace() -------------------------------------
+// One EngineTraceEvent per event, recorded inside the ISRs (engMux already held): an index mask
+// and four stores. tUs = micros() of the event (TR_CUT_SLOT: when the predicted event was
+// processed, ~T/8 after the suppressed spark), periodUs = slot-period estimate (0 = no estimate).
+// `info` per kind:
+//   TR_PULSE     bits 0-3 slots the interval spanned = compensation divisor (1 = consecutive fired
+//                slots, 4 = flames cycle; 0 = first pulse / interval not measurable; saturates 15)
+//                bit 4 a cut was refused by the dwell interlock   bit 5 the next slot is cut
+//                bit 6 pulse was on time (a new cut may start)    bit 7 measurement accepted (fresh)
+//   TR_CUT_SLOT  bits 0-3 position of this suppressed slot since the last real pulse (1 = first,
+//                saturates 15)   bits 4-5 sequencer after the decision (0 none, 1 pattern cycle,
+//                2 cannon silence, 3 cannon bang)   bit 7 the next slot is cut too (else released)
+//   TR_OUTLIER   1 held back as candidate, 2 split slot merged (1 slot), 3 split merged (2 slots),
+//                4 candidate adopted (estimate re-based), 5 discarded (gap too long / slot count
+//                unknown), 6 held back and the stale estimate dropped
+//   TR_REJECT    bits 0-2 why: 1 pin read HIGH (dwell-edge glitch), 2 < 3 ms after a pulse (coil
+//                ringing), 3 while clamped, 4 early (noise gate)   bits 3-7 rejected edges NOT
+//                recorded since the previous TR_REJECT (saturates 31). Rate limit: at most one
+//                TR_REJECT per ignition slot, so ringing can never flood the ring.
+//   TR_CLAMP_ON  CutReason that engaged the clamp
+//   TR_CLAMP_OFF CutReason that had the clamp; bit 7 = forced by engineSetInhibit()
+//   TR_UNSYNC    1 fired slot's pulse missing, 2 clamp without slot clock / cut gap too long,
+//                3 predicted event overdue (ISR postponed, e.g. flash write)
+//   TR_STATE     launchState | reason << 4 (telemetry reason), recorded on change (slow step)
+static const uint8_t  TRJ_PIN = 1;
+static const uint8_t  TRJ_RING = 2;
+static const uint8_t  TRJ_CLAMPED = 3;
+static const uint8_t  TRJ_EARLY = 4;
+static const uint8_t  TRO_HELD = 1;
+static const uint8_t  TRO_SPLIT1 = 2;
+static const uint8_t  TRO_SPLIT2 = 3;
+static const uint8_t  TRO_ADOPT = 4;
+static const uint8_t  TRO_DISCARD = 5;
+static const uint8_t  TRO_STALE = 6;
+static const uint8_t  TRU_NOPULSE = 1;
+static const uint8_t  TRU_GAP = 2;
+static const uint8_t  TRU_LATE = 3;
+static_assert((ENGINE_TRACE_LEN & (ENGINE_TRACE_LEN - 1)) == 0, "ENGINE_TRACE_LEN must be a power of 2");
+static const uint32_t TRACE_READ_CHUNK = 64;   // events copied per critical section in engineReadTrace()
+
 // =========================================================================================
 // STATE (touched only inside engMux critical sections)
 // =========================================================================================
@@ -216,6 +256,13 @@ static uint32_t ghostUnstableMs = 0;
 // telemetry / diagnostics
 static EngineTelemetry tel = {0, false, LAUNCH_OFF, 0, CUT_NONE, false, false, false, SAT_MS, LAUNCH_END_NONE};
 static EngineDiag diag = {0, 0, 0, 0, 0, 0, 0, 0, 0};
+static uint32_t firedSlots = 0;             // slots the scheduler let fire (EngineSlotCounters)
+// trace ring
+static EngineTraceEvent trBuf[ENGINE_TRACE_LEN];
+static uint32_t trSeq = 0;                  // sequence number of the newest event (event k lives at (k-1) & mask)
+static bool     trRejArmed = true;          // TR_REJECT rate limit: re-armed at every slot event
+static uint8_t  trRejSkipped = 0;
+static uint8_t  trLastState = 0;
 
 // =========================================================================================
 // HARDWARE ACCESS (direct registers: ISR-safe, a few ns)
@@ -240,16 +287,32 @@ static inline uint32_t IRAM_ATTR absDiff(uint32_t a, uint32_t b) {
   return (uint32_t)(d < 0 ? -d : d);
 }
 
+static inline void IRAM_ATTR trRec(uint32_t t, uint8_t kind, uint8_t info) {
+  uint32_t i = trSeq & (ENGINE_TRACE_LEN - 1);
+  trBuf[i].tUs = t;
+  trBuf[i].periodUs = (uint16_t)(!synced ? 0 : (slotPeriodUs > 65535 ? 65535 : slotPeriodUs));
+  trBuf[i].kind = kind;
+  trBuf[i].info = info;
+  trSeq++;
+}
+
+static inline void IRAM_ATTR trReject(uint32_t t, uint8_t why) {
+  if (trRejArmed) { trRec(t, TR_REJECT, (uint8_t)(why | (trRejSkipped << 3))); trRejArmed = false; trRejSkipped = 0; }
+  else if (trRejSkipped < 31) trRejSkipped++;
+}
+
 static void IRAM_ATTR clampSet(bool on, uint32_t now) {
   if (on) {
     if (inhibitCut) return;
     if (!clampOn) {
       clampOn = true; clampOnSinceUs = now; hwClamp(true);
       lastCutReason = benchActive ? CUT_BENCH : seqReason;
+      trRec(now, TR_CLAMP_ON, lastCutReason);
     }
     clampLatch = true; cutGap = true;
   } else if (clampOn) {
     clampOn = false; hwClamp(false);
+    trRec(now, TR_CLAMP_OFF, lastCutReason);
   }
 }
 
@@ -405,21 +468,22 @@ static bool IRAM_ATTR decideNext(uint32_t now, bool fresh, bool onTime, bool atR
 static void IRAM_ATTR onTachEdge(uint32_t now, bool pinLow) {
   edgeFlag = true;
   if (benchActive) { benchActive = false; clampSet(false, now); }   // bench test ends on ANY edge
-  if (!pinLow) { diag.rejected++; return; }                          // glitch on the slow rising (dwell) edge
+  if (!pinLow) { diag.rejected++; trReject(now, TRJ_PIN); return; }   // glitch on the slow rising (dwell) edge
   if (havePrev) {
     uint32_t dtRaw = now - lastRealUs;
-    if (dtRaw < MIN_PERIOD_US) { diag.rejected++; return; }          // coil ringing (< 3 ms)
-    if (clampOn) { diag.rejected++; return; }                        // no dwell while clamped -> cannot be a spark
+    if (dtRaw < MIN_PERIOD_US) { diag.rejected++; trReject(now, TRJ_RING); return; }   // coil ringing (< 3 ms)
+    if (clampOn) { diag.rejected++; trReject(now, TRJ_CLAMPED); return; }   // no dwell while clamped -> no spark
     // Adaptive noise gate, relative to the shorter of the estimate and a pending candidate, so a stale
     // estimate during a fast rev-up can never reject real pulses.
     uint32_t gateT = (candPer != 0 && candPer < slotPeriodUs) ? candPer : slotPeriodUs;
     if (synced && gateT < BLANK_MAX_PERIOD && (uint32_t)(now - lastEventUs) < gateT * BLANK_PCT / 100U) {
-      diag.rejected++; return;
+      diag.rejected++; trReject(now, TRJ_EARLY); return;
     }
   }
 
-  pulseFlag = true; diag.pulses++;
+  pulseFlag = true; diag.pulses++; trRejArmed = true;
   bool fresh = false;
+  uint32_t nInfo = 0;
   if (havePrev) {
     uint32_t dt = now - lastRealUs;
     lastGapUs = dt; everPulsed = true;
@@ -442,16 +506,18 @@ static void IRAM_ATTR onTachEdge(uint32_t now, bool pinLow) {
       if (ringLen > 0 && absDiff(per, periodUs) <= periodUs * JUMP_TOL_PCT / 100U) {
         accDt = dt; accN = n;
       } else if (splitDt != 0 && n == 1 && ringLen > 0 && absDiff(splitDt + dt, periodUs) <= periodUs * SPLIT_TOL_PCT / 100U) {
-        accDt = splitDt + dt; accN = 1; diag.outliers++;
+        accDt = splitDt + dt; accN = 1; diag.outliers++; trRec(now, TR_OUTLIER, TRO_SPLIT1);
       } else if (splitDt != 0 && n == 1 && ringLen > 0 && absDiff(splitDt + dt, 2U * periodUs) <= periodUs * SPLIT_TOL_PCT / 100U) {
-        accDt = splitDt + dt; accN = 2; diag.outliers++;
+        accDt = splitDt + dt; accN = 2; diag.outliers++; trRec(now, TR_OUTLIER, TRO_SPLIT2);
       } else if (candPer != 0 && absDiff(per, candPer) <= candPer * CAND_TOL_PCT / 100U) {
-        ringFlush(); ringPush(candDt, candN); accDt = dt; accN = n;
+        ringFlush(); ringPush(candDt, candN); accDt = dt; accN = n; trRec(now, TR_OUTLIER, TRO_ADOPT);
       } else {
         candDt = dt; candN = n; candPer = per; diag.outliers++;
         splitDt = (n == 1 && ringLen > 0 && per * 100U < periodUs * (100U - JUMP_TOL_PCT)) ? dt : 0;
-        if (++candRun >= CAND_STALE_RUN) ringFlush();    // stale estimate: gate off until re-established
+        if (++candRun >= CAND_STALE_RUN) { ringFlush(); trRec(now, TR_OUTLIER, TRO_STALE); }   // stale estimate: gate off
+        else trRec(now, TR_OUTLIER, TRO_HELD);
       }
+      nInfo = accN != 0 ? accN : n;
       if (accN != 0) {
         ringPush(accDt, accN); candPer = 0; candRun = 0; splitDt = 0;
         if (accN <= 2) cleanFlag = true;
@@ -461,7 +527,7 @@ static void IRAM_ATTR onTachEdge(uint32_t now, bool pinLow) {
         measSeq++; fresh = true;
       }
     } else {
-      ringFlush(); candPer = 0; splitDt = 0; diag.discarded++;
+      ringFlush(); candPer = 0; splitDt = 0; diag.discarded++; trRec(now, TR_OUTLIER, TRO_DISCARD);
     }
   }
   uint32_t prevEventUs = lastEventUs, prevPeriodUs = slotPeriodUs;
@@ -472,11 +538,15 @@ static void IRAM_ATTR onTachEdge(uint32_t now, bool pinLow) {
   bool cut = synced && decideNext(now, fresh, onTime, true);
   // Dwell interlock (coil- tach wiring): GPIO18 HIGH = igniter dwelling. Never clamp then, whatever the
   // scheduler thinks - that would abort the dwell and fire a premature spark.
-  if (cut && !hwTachLow()) { cut = false; seqReset(); diag.dwellBlocks++; }
+  bool blocked = cut && !hwTachLow();
+  if (blocked) { cut = false; seqReset(); diag.dwellBlocks++; }
+  trRec(now, TR_PULSE, (uint8_t)((nInfo > 15 ? 15 : nInfo) | (blocked ? 0x10 : 0) | (cut ? 0x20 : 0) |
+                                  (onTime ? 0x40 : 0) | (fresh ? 0x80 : 0)));
   if (cut) {
     clampSet(true, now);
     nextEventUs = now + slotPeriodUs + predMargin(slotPeriodUs);
   } else {
+    firedSlots++;
     clampSet(false, now);
   }
 }
@@ -485,13 +555,15 @@ static void IRAM_ATTR onTachEdge(uint32_t now, bool pinLow) {
 static void IRAM_ATTR predictedEvent(uint32_t now) {
   lastEventUs += slotPeriodUs;
   slotsSinceReal++;
-  diag.cutSlots++;
+  diag.cutSlots++; trRejArmed = true;
   int32_t r = modelRpmAt(lastEventUs);
   if (r < MODEL_MIN_RPM) r = MODEL_MIN_RPM;
   uint32_t T = RPM_CONST / (uint32_t)r;
   slotPeriodUs = T > MAX_PERIOD_US ? MAX_PERIOD_US : T;
-  if (decideNext(now, false, false, false)) nextEventUs = lastEventUs + slotPeriodUs + predMargin(slotPeriodUs);
-  else clampSet(false, now);
+  bool cutNext = decideNext(now, false, false, false);
+  trRec(now, TR_CUT_SLOT, (uint8_t)((slotsSinceReal > 15 ? 15 : slotsSinceReal) | (seqMode << 4) | (cutNext ? 0x80 : 0)));
+  if (cutNext) nextEventUs = lastEventUs + slotPeriodUs + predMargin(slotPeriodUs);
+  else { firedSlots++; clampSet(false, now); }
 }
 
 // =========================================================================================
@@ -691,6 +763,8 @@ static void IRAM_ATTR slowStep(uint32_t now) {
   tel.rpmEstimated = cutGap && !stopped;
   tel.measAgeMs = measAgeMs;
   tel.launchEnd = launchEnd;
+  uint8_t st = (uint8_t)(launchState | (reason << 4));
+  if (st != trLastState) { trLastState = st; trRec(now, TR_STATE, st); }
 }
 
 static void IRAM_ATTR onTick(uint32_t now) {
@@ -700,15 +774,18 @@ static void IRAM_ATTR onTick(uint32_t now) {
   } else if (!benchActive) {
     if (clampOn) {
       if (!synced || (uint32_t)(now - lastRealUs) > MAX_CUT_GAP_US) {
+        trRec(now, TR_UNSYNC, TRU_GAP); firedSlots++;
         clampSet(false, now); seqReset(); synced = false; diag.unsyncs++;
       } else if ((int32_t)(now - nextEventUs) >= 0) {
         if ((uint32_t)(now - nextEventUs) > slotPeriodUs / 2U) {
+          trRec(now, TR_UNSYNC, TRU_LATE); firedSlots++;
           clampSet(false, now); seqReset(); synced = false; diag.unsyncs++;   // late tick (flash stall)
         } else {
           predictedEvent(now);
         }
       }
     } else if (synced && (uint32_t)(now - lastEventUs) > slotPeriodUs * FIRE_TIMEOUT_PCT / 100U) {
+      trRec(now, TR_UNSYNC, TRU_NOPULSE);
       synced = false; seqReset(); diag.unsyncs++;
     }
   }
@@ -830,7 +907,7 @@ void engineSetInhibit(bool inhibit) {
   inhibitCut = inhibit;
   if (inhibit) {
     GPIO.out_w1tc = (1UL << PIN_SPARK_CUT);                  // always, immediately (LED left to the caller)
-    if (clampOn) { clampOn = false; GPIO.out_w1tc = (1UL << PIN_STATUS_LED); }
+    if (clampOn) { clampOn = false; GPIO.out_w1tc = (1UL << PIN_STATUS_LED); trRec(nowUs(), TR_CLAMP_OFF, (uint8_t)(lastCutReason | 0x80)); }
     benchActive = false; seqReset();
   }
   portEXIT_CRITICAL(&engMux);
@@ -859,21 +936,43 @@ EngineDiag engineGetDiag() {
   return d;
 }
 
-// TODO(engine): placeholder so the data logger can be built against the API; replace with the
-// real counters and the ISR trace ring.
+// ---- data-logger support ----------------------------------------------------------------
 EngineSlotCounters engineGetSlotCounters() {
   portENTER_CRITICAL(&engMux);
-  EngineSlotCounters c = {diag.pulses, 0, diag.cutSlots, diag.unsyncs};
+  EngineSlotCounters c = {diag.pulses, firedSlots, diag.cutSlots, diag.unsyncs};
   portEXIT_CRITICAL(&engMux);
   return c;
 }
 
+// Copies events with sequence number > *seq, oldest first. The spinlock is held for at most
+// TRACE_READ_CHUNK (64) events (~0.5 KB of copying) at a time, so the ISRs are never delayed by
+// more than a few microseconds; the loop picks up events recorded in between. *seq == 0 means
+// "start with the oldest event still in the ring" and never reports a loss. Task context only.
 size_t engineReadTrace(EngineTraceEvent* out, size_t max, uint32_t* seq, uint32_t* lost) {
-  (void)out;
-  (void)max;
-  (void)seq;
-  if (lost) *lost = 0;
-  return 0;
+  uint32_t lostCnt = 0;
+  size_t n = 0;
+  if (out != nullptr && seq != nullptr) {
+    while (n < max) {
+      portENTER_CRITICAL(&engMux);
+      uint32_t head = trSeq;                                   // newest recorded event
+      uint32_t from = *seq;                                    // last event the reader has
+      if (head - from > ENGINE_TRACE_LEN) {                    // reader fell behind (or first read)
+        uint32_t oldest = head - ENGINE_TRACE_LEN;             // == seq of the event before the oldest kept
+        if (from != 0) lostCnt += oldest - from;
+        from = oldest;
+      }
+      uint32_t avail = head - from;
+      uint32_t chunk = avail < TRACE_READ_CHUNK ? avail : TRACE_READ_CHUNK;
+      if (chunk > max - n) chunk = (uint32_t)(max - n);
+      for (uint32_t i = 0; i < chunk; i++) out[n + i] = trBuf[(from + i) & (ENGINE_TRACE_LEN - 1)];
+      portEXIT_CRITICAL(&engMux);
+      *seq = from + chunk;
+      n += chunk;
+      if (chunk == 0 || chunk == avail) break;                 // caught up with the recorder
+    }
+  }
+  if (lost) *lost = lostCnt;
+  return n;
 }
 
 // =========================================================================================

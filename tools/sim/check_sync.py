@@ -23,7 +23,7 @@ CPP = (ROOT / 'swift_show_tuning' / 'engine_control.cpp').read_text(encoding='ut
 JS = (ROOT / 'tools' / 'sim' / 'engine_core.js').read_text(encoding='utf-8')
 HDR = (ROOT / 'swift_show_tuning' / 'engine_control.h').read_text(encoding='utf-8')
 
-FUNCS = ['predMargin', 'absDiff', 'clampSet', 'modelRpmAt', 'ringPush', 'floodCheck', 'slotDrop', 'minCutOk', 'hardCutSlots',
+FUNCS = ['predMargin', 'absDiff', 'trRec', 'trReject', 'clampSet', 'modelRpmAt', 'ringPush', 'floodCheck', 'slotDrop', 'minCutOk', 'hardCutSlots',
          'startSeq', 'seqStillWanted', 'decideNext', 'onTachEdge', 'predictedEvent', 'launchStep',
          'decelStep', 'ghostStep', 'benchStep', 'slowStep', 'onTick']
 
@@ -99,7 +99,12 @@ def norm(s, js):
 
 def consts(src, js):
     if js:
-        pairs = re.findall(r'^const ([A-Z][A-Z0-9_]+) = ([^;]+);', src, flags=re.M)
+        pairs = []
+        for stmt in re.findall(r'^const ([A-Z][^;]*);', src, flags=re.M):
+            for part in stmt.split(','):
+                m = re.match(r'\s*([A-Z][A-Z0-9_]+)\s*=\s*(.+?)\s*$', part, flags=re.S)
+                if m:
+                    pairs.append((m[1], m[2]))
     else:
         pairs = re.findall(r'^static const \w+\s+([A-Z][A-Z0-9_]+)\s*=\s*([^;]+);', src, flags=re.M)
     return {k: v.strip() for k, v in pairs}
@@ -118,6 +123,8 @@ def evalc(expr, table):
 
 def main():
     header = dict(re.findall(r'#define\s+(\w+)\s+(\d+)', HDR))
+    # enum values declared in the header (CutReason, LaunchState, LaunchEnd, TraceKind)
+    header.update(dict(re.findall(r'^\s*((?:CUT|LAUNCH|TR)_[A-Z0-9_]+)\s*=\s*(\d+)', HDR, flags=re.M)))
     bad = 0
     cc, jc = consts(CPP, False), consts(JS, True)
     tc = dict(header); tc.update(cc)
