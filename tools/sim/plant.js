@@ -51,6 +51,7 @@ class Plant {
     this.st = { slots: 0, full: 0, weak: 0, premature: 0, cut: 0, misfire: 0, cutByCyl: [0, 0, 0, 0], firedByCyl: [0, 0, 0, 0] };
     this.slotLog = [];            // per slot: {t, cyl, fired}
     this.logSlots = false;
+    this.tachOn = true;           // false = tach wire disconnected (engine keeps running, no edges)
   }
 
   friction(r) { return r > 30 ? 1500 + 0.4 * r : 0; }
@@ -81,7 +82,7 @@ class Plant {
   spark(t, charge, premature) {
     // charge in us
     const cyl = this.slot % 4;
-    if (charge >= 200) {
+    if (charge >= 200 && this.tachOn) {
       let te = t + OPTO_DELAY_US + CYL_TACH_OFFSET_US[cyl] + this.o.jitterUs * this.rng.gauss();
       if (!(this.o.missProb > 0 && this.rng.next() < this.o.missProb)) this.pushEdge(te, true);
       // flyback ringing: extra falling edges up to 2 ms after the spark, pin level random (LED flickers)

@@ -79,6 +79,7 @@ function simulate(sc) {
         case 'inhibit': c.engineSetInhibit(a.v); break;
         case 'cfg': Object.assign(cfg, a.v); c.engineSetConfig(cfg); break;
         case 'gear': plant.inertia = a.inertia; plant.road = a.road || 0; break;
+        case 'tachoff': plant.tachOn = false; break;
       }
     }
     if (phoneHeld && phoneConnected && t >= nextRefresh) { c.engineSetShowButton(true); lastRefresh = t; nextRefresh = t + 200000; }
@@ -137,7 +138,8 @@ const PROFILES = {
   typical: { depth: 1000, durMs: 200 },
   harsh: { depth: 1500, durMs: 150 },
 };
-const NOISY = { jitterUs: 40, ringProb: 0.3, noiseRate: 5, dwellGlitchProb: 0.3, missProb: 0.01 };
+const NOISY = { jitterUs: 40, ringProb: 0.3, noiseRate: 5, dwellGlitchProb: 0.3, missProb: 0.01 };   // stress profile
+const MIDNOISE = { jitterUs: 25, ringProb: 0.2, noiseRate: 2, dwellGlitchProb: 0.2, missProb: 0.005 };
 
 function launchScenario(pattern, profile, opts = {}) {
   const p = PROFILES[profile];
@@ -241,17 +243,36 @@ function decelScenarios() {
   return [
     { name: 'decel neutral x2', seed: 3001, dur: 7.0, cfg: {}, plant: { rpm0: 850 }, kind: 'decel',
       actions: [{ at: 1.0, do: 'thr', v: 1 }, { at: 1.85, do: 'thr', v: 0 }, { at: 4.0, do: 'thr', v: 1 }, { at: 4.85, do: 'thr', v: 0 }],
-      lifts: [1.85, 4.85], expectBursts: 2 },
+      lifts: [1.85, 4.85], expectBursts: 2, minLen: 700 },
     { name: 'decel re-accel abort', seed: 3002, dur: 4.0, cfg: {}, plant: { rpm0: 850 }, kind: 'decel',
       actions: [{ at: 1.0, do: 'thr', v: 1 }, { at: 1.85, do: 'thr', v: 0 }, { at: 2.35, do: 'thr', v: 1 }, { at: 2.6, do: 'thr', v: 0.3 }],
       lifts: [1.85], expectBursts: 1, reaccel: 2.35 },
     { name: 'decel in-gear coast', seed: 3003, dur: 6.0, cfg: {}, plant: { rpm0: 2500, inertia: 3, road: 300 }, kind: 'decel',
-      actions: [{ at: 0.5, do: 'thr', v: 1 }, { at: 3.3, do: 'thr', v: 0 }], lifts: [3.3], expectBursts: 1 },
+      actions: [{ at: 0.5, do: 'thr', v: 1 }, { at: 3.3, do: 'thr', v: 0 }], lifts: [3.3], expectBursts: 1, minLen: 1100 },
     { name: 'decel pops disabled', seed: 3004, dur: 4.0, cfg: { decelPops: false }, plant: { rpm0: 850 }, kind: 'decel',
       actions: [{ at: 1.0, do: 'thr', v: 1 }, { at: 1.85, do: 'thr', v: 0 }], lifts: [1.85], expectBursts: 0 },
+    { name: 'decel neutral x2 noisy tach (mid)', seed: 3006, dur: 7.0, cfg: {}, plant: Object.assign({ rpm0: 850 }, MIDNOISE), kind: 'decel',
+      actions: [{ at: 1.0, do: 'thr', v: 1 }, { at: 1.85, do: 'thr', v: 0 }, { at: 4.0, do: 'thr', v: 1 }, { at: 4.85, do: 'thr', v: 0 }],
+      lifts: [1.85, 4.85], expectBursts: 2, minLen: 700 },
+    { name: 'decel in-gear coast noisy tach (mid)', seed: 3007, dur: 6.0, cfg: { cutPattern: 0 }, plant: Object.assign({ rpm0: 2500, inertia: 3, road: 300 }, MIDNOISE),
+      kind: 'decel', actions: [{ at: 0.5, do: 'thr', v: 1 }, { at: 3.3, do: 'thr', v: 0 }], lifts: [3.3], expectBursts: 1, minLen: 1100 },
     { name: 'decel gentle part-throttle', seed: 3005, dur: 6.0, cfg: {}, plant: { rpm0: 3000, inertia: 3, road: 300 }, kind: 'decel',
       actions: [{ at: 0.2, do: 'thr', v: 0.55 }, { at: 3.0, do: 'thr', v: 0.45 }], lifts: [], expectBursts: 0 },
   ];
+}
+
+function decelReaccelScenarios() {
+  const list = [];
+  for (let p = 0; p <= 4; p++) {
+    list.push({ name: `decel re-accel ${PAT_NAME[p]} neutral`, seed: 3100 + p, dur: 3.5, cfg: { cutPattern: p }, plant: { rpm0: 850 },
+      kind: 'decel', actions: [{ at: 1.0, do: 'thr', v: 1 }, { at: 1.85, do: 'thr', v: 0 }, { at: 2.40, do: 'thr', v: 1 }],
+      lifts: [1.85], expectBursts: 1, reaccel: 2.40 });
+    list.push({ name: `decel re-accel ${PAT_NAME[p]} in-gear`, seed: 3200 + p, dur: 5.0, cfg: { cutPattern: p },
+      plant: { rpm0: 2500, inertia: 3, road: 300 }, kind: 'decel',
+      actions: [{ at: 0.5, do: 'thr', v: 1 }, { at: 3.3, do: 'thr', v: 0 }, { at: 3.80, do: 'thr', v: 1 }],
+      lifts: [3.3], expectBursts: 1, reaccel: 3.80 });
+  }
+  return list;
 }
 
 function checkDecel(res) {
@@ -266,12 +287,15 @@ function checkDecel(res) {
     out.len.push((bb.end - bb.start) * 1000);
     out.endRpm.push(res.rec.rpm[idx(res.rec, bb.end)]);
     if (bb.end - bb.start > 1.25) { out.pass = false; out.notes.push(`burst ${k} ${f0((bb.end - bb.start) * 1000)}ms`); }
+    if (sc.minLen && (bb.end - bb.start) * 1000 < sc.minLen) { out.pass = false; out.notes.push(`burst ${k} aborted early (${f0((bb.end - bb.start) * 1000)}ms)`); }
     if (res.rec.rpm[idx(res.rec, bb.end)] < 2000) { out.pass = false; out.notes.push(`burst ${k} ends at ${f0(res.rec.rpm[idx(res.rec, bb.end)])}`); }
     if (lift !== undefined && bb.start - lift > 0.4) { out.pass = false; out.notes.push(`burst ${k} late ${f0((bb.start - lift) * 1000)}ms`); }
   });
   if (sc.reaccel && b.length) {
     out.abortMs = (b[0].end - sc.reaccel) * 1000;
-    if (out.abortMs > 250) { out.pass = false; out.notes.push(`abort after re-accel ${f0(out.abortMs)}ms`); }
+    out.intoBurstMs = (sc.reaccel - b[0].start) * 1000;
+    if (out.intoBurstMs < 100) { out.pass = false; out.notes.push(`burst started only ${f0(out.intoBurstMs)}ms before re-accel`); }
+    if (out.abortMs > 200) { out.pass = false; out.notes.push(`abort after re-accel ${f0(out.abortMs)}ms`); }
   }
   out.prem = res.plant.st.premature;
   if (out.prem > 0) { out.pass = false; out.notes.push(`${out.prem} premature`); }
@@ -334,8 +358,15 @@ function benchScenarios() {
   return [
     { name: 'bench: engine never ran', seed: 6001, dur: 4.0, cfg: {}, plant: { rpm0: 0 }, kind: 'bench1',
       actions: [{ at: 0.5, do: 'show', v: true }, { at: 3.0, do: 'show', v: false }] },
-    { name: 'bench: key-off then button', seed: 6002, dur: 8.0, cfg: {}, plant: { rpm0: 850 }, kind: 'bench2',
-      actions: [{ at: 1.0, do: 'stop' }, { at: 1.5, do: 'show', v: true }, { at: 4.5, do: 'edge' }, { at: 7.5, do: 'show', v: false }] },
+    { name: 'bench: engine stalls, then button', seed: 6002, dur: 8.0, cfg: {}, plant: { rpm0: 850 }, kind: 'bench2',
+      actions: [{ at: 1.0, do: 'gear', inertia: 1, road: 2500 }, { at: 1.5, do: 'show', v: true }, { at: 4.5, do: 'edge' },
+        { at: 7.5, do: 'show', v: false }] },
+    { name: 'bench: 10 s session cap', seed: 6003, dur: 14.0, cfg: {}, plant: { rpm0: 0 }, kind: 'bench3',
+      actions: [{ at: 0.5, do: 'show', v: true }, { at: 12.0, do: 'show', v: false }, { at: 12.5, do: 'show', v: true }] },
+    { name: 'bench: tach lost at idle, button held', seed: 6004, dur: 7.0, cfg: {}, plant: { rpm0: 850 }, kind: 'tachlost',
+      actions: [{ at: 1.0, do: 'tachoff' }, { at: 1.5, do: 'show', v: true }] },
+    { name: 'bench: tach lost in gear 2800, button held', seed: 6005, dur: 7.0, cfg: {}, plant: { rpm0: 2800, inertia: 3, road: 400 },
+      kind: 'tachlost', actions: [{ at: 0.0, do: 'thr', v: 0.33 }, { at: 1.0, do: 'tachoff' }, { at: 1.5, do: 'show', v: true }] },
   ];
 }
 
@@ -343,13 +374,29 @@ function checkBench(res) {
   const r = res.rec, out = { pass: true, notes: [] };
   const on = firstTime(r, (i) => r.reason[i] === core.CUT_BENCH && r.clamp[i], 0);
   out.on = on;
+  if (res.sc.kind === 'tachlost') {
+    const anyClamp = firstTime(r, (i) => r.clamp[i], 0);
+    out.minRpm = stats(win(r, 'rpm', 1.0, res.sc.dur)).min;
+    if (anyClamp !== null) { out.pass = false; out.notes.push(`clamp at ${anyClamp.toFixed(3)}s (reason ${r.reason[idx(r, anyClamp)]})`); }
+    if (res.plant.stalledAt !== undefined) { out.pass = false; out.notes.push('STALLED'); }
+    return out;
+  }
+  if (res.sc.kind === 'bench3') {
+    const off = firstTime(r, (i) => !r.clamp[i], 0.6);
+    const again = firstTime(r, (i) => r.clamp[i], (off || 0) + 0.01);
+    out.offAt = off; out.again = again;
+    if (on === null || on > 0.6) { out.pass = false; out.notes.push(`bench on at ${on}`); }
+    if (off === null || Math.abs(off - (on + 10.0)) > 0.01) { out.pass = false; out.notes.push(`session ended at ${off}`); }
+    if (again === null || again < 12.49 || again > 12.52) { out.pass = false; out.notes.push(`re-engaged at ${again} (expected after release + press at 12.5)`); }
+    return out;
+  }
   if (res.sc.kind === 'bench1') {
     if (on === null || on > 0.6) { out.pass = false; out.notes.push(`bench on at ${on}`); }
     const offAt = firstTime(r, (i) => !r.clamp[i], 3.0);
     if (offAt === null || offAt > 3.01) { out.pass = false; out.notes.push('not released'); }
   } else {
     // engine stopped at 1.0 -> bench only after 2 s of silence; the injected edge at 4.5 must release it at once
-    const lastSpark = res.plant.slotLog.filter((s) => s.fired && s.t < 1.2e6).pop();
+    const lastSpark = res.plant.slotLog.filter((s) => s.fired && s.t < 3.0e6).pop();
     out.lastSpark = lastSpark ? lastSpark.t / 1e6 : 0;
     if (on === null || on < out.lastSpark + 1.99 || on > out.lastSpark + 2.02) { out.pass = false; out.notes.push(`bench on at ${on}`); }
     const edgeT = 4.5;
@@ -424,8 +471,8 @@ function miscScenarios() {
         { at: 3.2, do: 'thr', v: 0 }] },
     { name: 'inhibit while cutting', seed: 8002, dur: 6.0, cfg: {}, plant: { rpm0: 850 }, kind: 'inhibit',
       actions: [{ at: 0.5, do: 'show', v: true }, { at: 1.0, do: 'thr', v: 1 }, { at: 3.0, do: 'inhibit', v: true }, { at: 4.0, do: 'inhibit', v: false }] },
-    { name: 'anti-flood cannon 1.0s @7000', seed: 8003, dur: 7.0, cfg: { cutPattern: 4, maxCutSeconds: 1.0, redlineRpm: 7000 }, plant: { rpm0: 850 }, kind: 'flood',
-      actions: [{ at: 1.0, do: 'thr', v: 1 }] },
+    { name: 'anti-flood: show cannon @6500, 1.0 s', seed: 8003, dur: 7.0, cfg: { cutPattern: 4, maxCutSeconds: 1.0, launchRpm: 6500, redlineRpm: 7000 },
+      plant: { rpm0: 850 }, kind: 'flood', actions: [{ at: 0.5, do: 'show', v: true }, { at: 1.0, do: 'thr', v: 1 }] },
     { name: 'hold timeout 12 s', seed: 8004, dur: 16.0, cfg: {}, plant: { rpm0: 850 }, kind: 'holdto',
       actions: [{ at: 0.5, do: 'arm' }, { at: 1.0, do: 'thr', v: 1 }] },
     { name: 'arm window 10 s', seed: 8005, dur: 12.0, cfg: {}, plant: { rpm0: 850 }, kind: 'armto',
@@ -497,7 +544,7 @@ function checkMisc(res) {
     }
     if (bad) { out.pass = false; out.notes.push(`cutActive disagrees with the clamp in ${bad} ms`); }
     const peak = stats(win(r, 'rpm', 2.0, 7.0)).max; out.peak = peak;
-    if (peak > 7150) { out.pass = false; out.notes.push(`overshoot ${f0(peak)}`); }
+    if (peak > 6700) { out.pass = false; out.notes.push(`overshoot ${f0(peak)}`); }
   } else if (k === 'holdto') {
     const off = res.events.find((e) => e.t > 1.0 && e.state === core.LAUNCH_OFF);
     out.offAt = off ? off.t : null;
@@ -555,10 +602,11 @@ function runAll(opts) {
     }
   }
   // (e) decel
-  for (const sc of decelScenarios()) {
+  for (const sc of decelScenarios().concat(decelReaccelScenarios())) {
     const res = simulate(sc); const m = checkDecel(res);
     row(sc.name, m.pass, `bursts ${m.bursts.length} lat ${m.lat.map(f0).join(',') || '-'}ms len ${m.len.map(f0).join(',') || '-'}ms ` +
-      `endRpm ${m.endRpm.map(f0).join(',') || '-'}${m.abortMs !== undefined ? ` abort +${f0(m.abortMs)}ms` : ''} ${m.notes.join('; ')}`);
+      `endRpm ${m.endRpm.map(f0).join(',') || '-'}` +
+      `${m.abortMs !== undefined ? ` re-accel ${f0(m.intoBurstMs)}ms into burst -> stops +${f0(m.abortMs)}ms` : ''} ${m.notes.join('; ')}`);
   }
   // (f) ghost
   {
@@ -574,7 +622,13 @@ function runAll(opts) {
   // (h) bench
   for (const sc of benchScenarios()) {
     const res = simulate(sc); const m = checkBench(res);
-    row(sc.name, m.pass, `bench on at ${m.on === null ? '-' : m.on.toFixed(3)}s${m.releaseMs !== undefined ? ` edge-release ${m.releaseMs.toFixed(2)}ms re-engage ${m.again === null ? 'none' : m.again.toFixed(3)}` : ''} ${m.notes.join('; ')}`);
+    let txt;
+    if (sc.kind === 'tachlost') txt = `no bench clamp, engine keeps running (min ${f0(m.minRpm)} rpm)`;
+    else if (sc.kind === 'bench3') txt = `on ${m.on && m.on.toFixed(3)}s, capped off ${m.offAt && m.offAt.toFixed(3)}s, again after re-press ${m.again && m.again.toFixed(3)}s`;
+    else txt = `bench on at ${m.on === null ? '-' : m.on.toFixed(3)}s` +
+      (m.lastSpark !== undefined ? ` (last spark ${m.lastSpark.toFixed(3)}s)` : '') +
+      (m.releaseMs !== undefined ? ` edge-release ${m.releaseMs.toFixed(2)}ms re-engage ${m.again === null ? 'none' : m.again.toFixed(3)}` : '');
+    row(sc.name, m.pass, `${txt} ${m.notes.join('; ')}`);
   }
   for (const p of [0, 1, 4]) {
     const res = simulate(starvationScenario(p, false)); const m = checkStarve(res);
@@ -648,7 +702,7 @@ function trace(name) {
   for (let p = 0; p <= 4; p++) for (const prof of ['mild', 'typical', 'harsh']) all.push(launchScenario(p, prof));
   for (let p = 0; p <= 4; p++) { all.push(redlineScenario(p)); all.push(redlineScenario(p, { gear: true })); }
   for (const p of [0, 1, 4]) all.push(liftScenario(p));
-  all.push(...decelScenarios(), ghostScenario(), deadmanScenario(), ...benchScenarios(), ...miscScenarios());
+  all.push(...decelScenarios(), ...decelReaccelScenarios(), ghostScenario(), deadmanScenario(), ...benchScenarios(), ...miscScenarios());
   for (const p of [0, 1, 4]) all.push(starvationScenario(p, false));
   all.push(launchScenario(1, 'typical', { original: true, name: 'ORIGINAL launch flames typical' }));
   const sc = all.find((s) => s.name === name);
@@ -673,4 +727,4 @@ if (require.main === module) {
   process.exit(fails ? 1 : 0);
 }
 
-module.exports = { simulate, launchScenario, redlineScenario, checkLaunch, checkRedline };
+module.exports = { simulate, launchScenario, redlineScenario, checkLaunch, checkRedline, checkDecel };
