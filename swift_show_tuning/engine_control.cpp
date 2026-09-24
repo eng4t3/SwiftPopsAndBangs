@@ -38,6 +38,7 @@
 #include "engine_control.h"
 #include <soc/gpio_struct.h>
 #include <esp_timer.h>
+#include <esp_private/panic_internal.h>   // panic_info_t (for the panic-handler wrap below)
 
 // =========================================================================================
 // CONSTANTS
@@ -95,6 +96,7 @@ static const int32_t  LAUNCH_LIFT_EXTRA  = 800;      // ... lift if it keeps fal
 // ---- decel pops ----
 static const uint8_t  DECEL_FRAME_STEPS  = 10;       // 20 ms frames
 static const uint8_t  DECEL_HIST         = 8;
+static const uint32_t DECEL_SLOPE_MIN_MS = 40;       // slope needs measurements >= 40 ms apart (normalised to 80 ms)
 static const int32_t  DECEL_DROP_80      = 60;       // decline >= 60 rpm / 80 ms (750 rpm/s) = decel frame
 static const int32_t  DECEL_RISE_80      = 30;
 static const int32_t  DECEL_STEADY_80    = 20;
@@ -104,6 +106,9 @@ static const uint32_t DECEL_NO_RISE_MS   = 250;
 static const uint32_t DECEL_BURST_MS     = 1200;
 static const int32_t  DECEL_ABORT_RPM    = 2100;
 static const int32_t  DECEL_ABORT_RISE   = 60;
+static const int32_t  DECEL_REACCEL_PCT  = 70;       // burst decline shallower than 70 % of the trigger decline = throttle reopened
+static const uint32_t DECEL_REACCEL_AFTER_MS = 80;   // (checked once the 80 ms slope window lies inside the burst)
+static const uint32_t DECEL_REACCEL_FRAMES = 2;      // ... on this many consecutive fresh frames
 static const uint32_t DECEL_CLEAN_MASK   = 0x3F;     // no clamp activity in the last 6 frames (120 ms)
 static const uint16_t DECEL_QUIET_MS     = 3000;     // no decel pops within 3 s after a 2-step / launch (clutch = load)
 static const int32_t  DECEL_LOAD_FACTOR  = 2;        // burst aborts when rpm falls > 2x faster than free-rev friction
@@ -117,6 +122,8 @@ static const uint32_t GHOST_SETTLE_MS    = 1000;
 static const uint16_t GHOST_MAX_AGE_MS   = 100;
 // ---- inputs ----
 static const uint16_t BENCH_STOP_MS      = ENGINE_BENCH_STOP_MS;
+static const uint32_t BENCH_MAX_MS       = ENGINE_BENCH_MAX_MS;   // one bench session at most 10 s, then release the button
+static const uint32_t BENCH_STOP_GAP_US  = 75000;    // last tach interval >= 75 ms (< 400 rpm): the engine really stopped
 static const uint8_t  SW_DEBOUNCE_STEPS  = 10;       // 20 ms
 
 enum : uint8_t { SEQ_NONE = 0, SEQ_CYCLE = 1, SEQ_CANNON_CUT = 2, SEQ_CANNON_FIRE = 3 };
@@ -142,7 +149,7 @@ static uint32_t showRefreshMs = 0;
 static bool     havePrev = false, synced = false;
 static uint32_t lastRealUs = 0, lastEventUs = 0, slotsSinceReal = 0, slotPeriodUs = 0, periodUs = 0;
 static int32_t  rpmMeas = 0, rpmSlow = 0;
-static uint32_t measSeq = 0;
+static uint32_t measSeq = 0, measCenterMs = 0;      // measCenterMs: msClock at the middle of the estimate's window
 static uint32_t ringDt[RING_LEN];
 static uint8_t  ringN[RING_LEN];
 static uint8_t  ringLen = 0, ringHead = 0;
@@ -173,6 +180,8 @@ static uint16_t noEdgeMs = SAT_MS, noPulseMs = SAT_MS, clampOffMs = SAT_MS, noCu
 static uint16_t measAgeMs = SAT_MS, cleanAgeMs = SAT_MS;
 static uint32_t ageSeq = 0;
 static bool     stopped = true, showActive = false, swStable = false, benchActive = false;
+static uint32_t benchStartMs = 0, lastGapUs = 0;
+static bool     benchNeedRelease = false, everPulsed = false;
 static int32_t  rpmDisp = 0;
 static uint8_t  swCnt = 0;
 static int32_t  reqLimit = 6200;
@@ -190,6 +199,7 @@ static int32_t  verifyMin = 0, verifyFloor = 0;
 // decel
 static uint8_t  frameDiv = 0;
 static int32_t  hist[DECEL_HIST];
+static uint32_t histT[DECEL_HIST];
 static uint8_t  histIdx = 0, histN = 0;
 static uint32_t clampHist = 0, frameSeq = 0;
 static bool     frameClamp = false;
@@ -198,7 +208,7 @@ static uint8_t  steadyFrames = 0;
 static bool     decelArmed = false;
 static uint32_t lastRiseMs = 0;
 static bool     burstActive = false;
-static uint32_t burstStartMs = 0, burstSlowFrames = 0;
+static uint32_t burstStartMs = 0, burstSlowFrames = 0, burstRiseFrames = 0;
 static int32_t  burstMin = 0, burstRate0 = 0;
 static uint16_t decelQuietMs = 0;
 // ghost
@@ -313,9 +323,13 @@ static bool IRAM_ATTR startSeq(uint8_t reason, int32_t r, int32_t lim, bool isLi
   seqReason = reason; seqLimit = lim;
   bool escalate = isLimiter && r >= lim + LIMIT_ESCALATE;
   uint8_t p = rtPattern;
-  // Cannon: continuous cut, not while flood-locked, and never in hands-free launch HOLDING
-  // (a clutch drop cannot be seen during a silent phase -> bog / stall), hard cut there instead.
-  if (p == 4 && !escalate && !floodLock && reason != CUT_LAUNCH) {
+  // Decel pops always use a pattern with fired slots (flames for hard / cannon): their tach pulses
+  // are what lets a re-acceleration abort the burst within ~200 ms.
+  if (reason == CUT_DECEL && (p == 0 || p == 4)) p = 1;
+  // Cannon (continuous cut) only for the show button / physical switch 2-step. Redline and
+  // hands-free launch use hard cut (a silent phase hides a clutch drop, a second of full cut in
+  // gear at the redline feels like a stall).
+  if (p == 4 && !escalate && !floodLock && (reason == CUT_SHOW || reason == CUT_SWITCH)) {
     seqMode = SEQ_CANNON_CUT; seqStartUs = now;
     return floodCheck(now);
   }
@@ -408,6 +422,7 @@ static void IRAM_ATTR onTachEdge(uint32_t now, bool pinLow) {
   bool fresh = false;
   if (havePrev) {
     uint32_t dt = now - lastRealUs;
+    lastGapUs = dt; everPulsed = true;
     uint32_t n = 0;
     if (slotsSinceReal == 0) {
       n = 1;                                              // consecutive fired slots
@@ -441,6 +456,7 @@ static void IRAM_ATTR onTachEdge(uint32_t now, bool pinLow) {
         ringPush(accDt, accN); candPer = 0; candRun = 0; splitDt = 0;
         if (accN <= 2) cleanFlag = true;
         rpmMeas = (int32_t)(RPM_CONST / periodUs);
+        measCenterMs = msClock - measWinUs / 2000U;         // the estimate describes the middle of its window
         rpmSlow = (rpmSlow == 0) ? rpmMeas : rpmSlow + (rpmMeas - rpmSlow) / 16;
         measSeq++; fresh = true;
       }
@@ -540,10 +556,20 @@ static void IRAM_ATTR decelStep(bool twoStep) {
   frameDiv = 0;
   bool freshFrame = measSeq != frameSeq; frameSeq = measSeq;
   clampHist = (clampHist << 1) | (frameClamp ? 1U : 0U); frameClamp = false;
-  hist[histIdx] = rpmMeas; histIdx = (uint8_t)((histIdx + 1) % DECEL_HIST); if (histN < DECEL_HIST) histN++;
-  bool haveSlope = histN >= 5;
+  hist[histIdx] = rpmMeas; histT[histIdx] = measCenterMs;
+  histIdx = (uint8_t)((histIdx + 1) % DECEL_HIST); if (histN < DECEL_HIST) histN++;
+  // rpm change per 80 ms between the newest sample and the one 4 frames older, normalised by the real
+  // time between the two measurements (during a burst a new measurement only comes every few slots)
+  uint8_t iNew = (uint8_t)((histIdx + DECEL_HIST - 1) % DECEL_HIST), iOld = (uint8_t)((histIdx + DECEL_HIST - 5) % DECEL_HIST);
+  uint32_t spanMs = histT[iNew] - histT[iOld];
+  bool haveSlope = histN >= 5 && spanMs >= DECEL_SLOPE_MIN_MS && spanMs < 1000;
   int32_t slope = 0;
-  if (haveSlope) slope = hist[(histIdx + DECEL_HIST - 1) % DECEL_HIST] - hist[(histIdx + DECEL_HIST - 5) % DECEL_HIST];
+  if (haveSlope) slope = (hist[iNew] - hist[iOld]) * 80 / (int32_t)spanMs;
+  // reference decline for a burst: whole history (7 frames), less sensitive to measurement ripple
+  uint8_t iFirst = (uint8_t)(histIdx % DECEL_HIST);
+  uint32_t spanLongMs = histT[iNew] - histT[iFirst];
+  int32_t slopeLong = (histN >= DECEL_HIST && spanLongMs >= DECEL_SLOPE_MIN_MS && spanLongMs < 1000) ?
+                      (hist[iNew] - hist[iFirst]) * 80 / (int32_t)spanLongMs : slope;
   bool clean = haveSlope && freshFrame && !stopped && (clampHist & DECEL_CLEAN_MASK) == 0;
   if (clean) {
     if (slope >= DECEL_RISE_80) lastRiseMs = msClock;
@@ -559,19 +585,20 @@ static void IRAM_ATTR decelStep(bool twoStep) {
   int32_t loadDrop80 = (MODEL_DECEL_BASE + rpmMeas * MODEL_DECEL_PCT / 100) * 80 * DECEL_LOAD_FACTOR / 1000;
   if (burstActive) {
     if (freshFrame && rpmMeas < burstMin) burstMin = rpmMeas;
+    if (freshFrame) { if (rpmMeas > burstMin + DECEL_ABORT_RISE) burstRiseFrames++; else burstRiseFrames = 0; }
     uint32_t el = msClock - burstStartMs;
-    if (rtPattern >= 1 && rtPattern <= 3 && freshFrame && haveSlope && el >= 100) {
-      if (slope > burstRate0 / 2) burstSlowFrames++; else burstSlowFrames = 0;
+    if (freshFrame && haveSlope && el >= DECEL_REACCEL_AFTER_MS) {
+      if (slope * 100 > burstRate0 * DECEL_REACCEL_PCT) burstSlowFrames++; else burstSlowFrames = 0;
     }
     if (!rtDecelPops || twoStep || decelQuietMs > 0 || limEngaged || el >= DECEL_BURST_MS || r < DECEL_ABORT_RPM ||
-        (freshFrame && rpmMeas > burstMin + DECEL_ABORT_RISE) || burstSlowFrames >= 2 ||
+        burstRiseFrames >= DECEL_REACCEL_FRAMES || burstSlowFrames >= DECEL_REACCEL_FRAMES ||
         (freshFrame && haveSlope && slope < -loadDrop80)) {
       burstActive = false; decelFrames = 0; steadyFrames = 0;
     }
   } else if (rtDecelPops && rtArmed && decelArmed && decelFrames >= DECEL_TRIG_FRAMES &&
              (uint32_t)(msClock - lastRiseMs) >= DECEL_NO_RISE_MS && r >= rtDecelRpm && !twoStep && decelQuietMs == 0 &&
              !limEngaged && slope >= -loadDrop80) {
-    burstActive = true; burstStartMs = msClock; burstMin = rpmMeas; burstRate0 = slope; burstSlowFrames = 0;
+    burstActive = true; burstStartMs = msClock; burstMin = rpmMeas; burstRate0 = slopeLong; burstSlowFrames = 0; burstRiseFrames = 0;
     decelArmed = false; decelFrames = 0;
   }
 }
@@ -586,13 +613,20 @@ static void IRAM_ATTR ghostStep(bool twoStep) {
 }
 
 // Bench test: show button only (never the physical switch - a clutch switch pressed while cranking
-// would clamp IB and the engine could not start), engine truly stopped, ends on any tach edge.
+// would clamp IB and the engine could not start). Engine truly stopped = no edge and no cut for 2 s
+// AND either no tach pulse since boot or the last interval before the pulses stopped was slow
+// (< 400 rpm, engine stalling / cranking): a tach wire lost while the engine runs at idle or in gear
+// never qualifies. One session lasts at most 10 s, then the button has to be released. Any tach edge
+// ends it (while clamped the igniter cannot dwell, so in practice that edge is noise).
 static void IRAM_ATTR benchStep(uint32_t now) {
   bool want = rtArmed && !inhibitCut && showActive;
+  if (!showActive) benchNeedRelease = false;
   if (benchActive) {
     if (!want) { benchActive = false; clampSet(false, now); }
-  } else if (want && stopped && noEdgeMs >= BENCH_STOP_MS && noCutMs >= BENCH_STOP_MS) {
-    seqReset(); benchActive = true; clampSet(true, now);
+    else if ((uint32_t)(msClock - benchStartMs) >= BENCH_MAX_MS) { benchActive = false; clampSet(false, now); benchNeedRelease = true; }
+  } else if (want && !benchNeedRelease && stopped && noEdgeMs >= BENCH_STOP_MS && noCutMs >= BENCH_STOP_MS &&
+             (!everPulsed || lastGapUs >= BENCH_STOP_GAP_US)) {
+    seqReset(); benchActive = true; benchStartMs = msClock; clampSet(true, now);
   }
 }
 
@@ -696,6 +730,21 @@ static void IRAM_ATTR tickIsr() {
   portENTER_CRITICAL_ISR(&engMux);
   onTick(nowUs());
   portEXIT_CRITICAL_ISR(&engMux);
+}
+
+// =========================================================================================
+// CRASH FAIL-SAFE
+// =========================================================================================
+// Linked with -Wl,--wrap=esp_panic_handler (platformio.ini). Every fatal path - CPU exception,
+// interrupt watchdog, task watchdog (TASK_WDT_PANIC=y -> abort), abort()/assert, stack overflow -
+// ends in IDF's panic_handler(), which stalls the other core and then calls esp_panic_handler().
+// That prints the Guru Meditation and writes the core dump to flash with interrupts disabled for
+// hundreds of ms, so whatever the clamp was doing would freeze there. Drop GPIO19 (and the LED)
+// first. Runs from IRAM with the cache possibly disabled: register write only.
+extern "C" void __real_esp_panic_handler(panic_info_t* info);
+extern "C" void IRAM_ATTR __wrap_esp_panic_handler(panic_info_t* info) {
+  GPIO.out_w1tc = (1UL << PIN_SPARK_CUT) | (1UL << PIN_STATUS_LED);
+  __real_esp_panic_handler(info);
 }
 
 // =========================================================================================

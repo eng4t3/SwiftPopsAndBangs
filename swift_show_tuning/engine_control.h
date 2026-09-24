@@ -40,6 +40,7 @@
 #define ENGINE_LAUNCH_FIRED_MS     2000  // LAUNCH_FIRED is reported this long, then LAUNCH_OFF
 #define ENGINE_SHOW_DEADMAN_MS      600  // engineSetShowButton(true) must be refreshed within this time
 #define ENGINE_BENCH_STOP_MS       2000  // bench test needs this long without tach pulses and without cutting
+#define ENGINE_BENCH_MAX_MS       10000  // one bench session lasts at most this long, then the button must be released
 #define ENGINE_TICK_US              100  // control tick period (hardware timer ISR)
 #define ENGINE_HW_TIMER               0  // hardware timer number used by the engine core (do not reuse)
 

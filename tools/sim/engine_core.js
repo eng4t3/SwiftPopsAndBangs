@@ -29,6 +29,7 @@ const ENGINE_LAUNCH_HOLD_MAX_MS = 12000;
 const ENGINE_LAUNCH_FIRED_MS = 2000;
 const ENGINE_SHOW_DEADMAN_MS = 600;
 const ENGINE_BENCH_STOP_MS = 2000;
+const ENGINE_BENCH_MAX_MS = 10000;
 const ENGINE_TICK_US = 100;
 
 const LAUNCH_OFF = 0, LAUNCH_ARMED = 1, LAUNCH_HOLDING = 2, LAUNCH_FIRED = 3;
@@ -86,6 +87,7 @@ const LAUNCH_VERIFY_RISE = 100;           // ... by this much above its minimum 
 const LAUNCH_LIFT_EXTRA = 800;            // ... lift if it keeps falling this far below the threshold
 const DECEL_FRAME_STEPS = 10;
 const DECEL_HIST = 8;
+const DECEL_SLOPE_MIN_MS = 40;            // slope needs measurements >= 40 ms apart (normalised to 80 ms)
 const DECEL_DROP_80 = 60;
 const DECEL_RISE_80 = 30;
 const DECEL_STEADY_80 = 20;
@@ -95,6 +97,9 @@ const DECEL_NO_RISE_MS = 250;
 const DECEL_BURST_MS = 1200;
 const DECEL_ABORT_RPM = 2100;
 const DECEL_ABORT_RISE = 60;
+const DECEL_REACCEL_PCT = 70;             // burst decline shallower than 70 % of the trigger decline = throttle reopened
+const DECEL_REACCEL_AFTER_MS = 80;        // (checked once the 80 ms slope window lies inside the burst)
+const DECEL_REACCEL_FRAMES = 2;           // ... on this many consecutive fresh frames
 const DECEL_CLEAN_MASK = 0x3f;
 const DECEL_QUIET_MS = 3000;              // no decel pops within 3 s after a 2-step / launch (clutch engaging = load)
 const DECEL_LOAD_FACTOR = 2;              // burst aborts when rpm falls > 2x faster than free-rev friction (load)
@@ -106,6 +111,8 @@ const GHOST_RISE_DEV = 60;                // above the slow average = rising / t
 const GHOST_SETTLE_MS = 1000;
 const GHOST_MAX_AGE_MS = 100;
 const BENCH_STOP_MS = ENGINE_BENCH_STOP_MS;
+const BENCH_MAX_MS = ENGINE_BENCH_MAX_MS;         // one bench session at most 10 s, then the button must be released
+const BENCH_STOP_GAP_US = 75000;                  // last tach interval >= 75 ms (< 400 rpm): the engine really stopped
 const SW_DEBOUNCE_STEPS = 10;
 
 const SEQ_NONE = 0, SEQ_CYCLE = 1, SEQ_CANNON_CUT = 2, SEQ_CANNON_FIRE = 3;
@@ -142,7 +149,7 @@ function createCore(hw) {
   // ---- tach / estimator ----
   let havePrev = false, synced = false;
   let lastRealUs = 0, lastEventUs = 0, slotsSinceReal = 0, slotPeriodUs = 0, periodUs = 0;
-  let rpmMeas = 0, rpmSlow = 0, measSeq = 0;
+  let rpmMeas = 0, rpmSlow = 0, measSeq = 0, measCenterMs = 0;
   const ringDt = new Array(RING_LEN).fill(0), ringN = new Array(RING_LEN).fill(0);
   let ringLen = 0, ringHead = 0, measWinUs = 0;
   let edgeFlag = false, pulseFlag = false, cleanFlag = false;
@@ -162,6 +169,7 @@ function createCore(hw) {
   let noEdgeMs = SAT_MS, noPulseMs = SAT_MS, clampOffMs = SAT_MS, noCutMs = SAT_MS, measAgeMs = SAT_MS, cleanAgeMs = SAT_MS;
   let ageSeq = 0;
   let stopped = true, rpmDisp = 0, showActive = false, swStable = false, swCnt = 0, benchActive = false;
+  let benchStartMs = 0, benchNeedRelease = false, everPulsed = false, lastGapUs = 0;
   let reqLimit = 6200, reqLimitReason = CUT_REDLINE, reqBurst = false, reqGhost = false;
   // launch
   let launchState = LAUNCH_OFF, launchEnd = LAUNCH_END_NONE;
@@ -169,10 +177,10 @@ function createCore(hw) {
   let holdRef = 0, dropping = false, dropN = 0, launchSeenSeq = 0, lastAtLimitRpm = 0;
   let verifyLift = false, verifyStartMs = 0, verifyMin = 0, verifyFloor = 0;
   // decel
-  let frameDiv = 0; const hist = new Array(DECEL_HIST).fill(0); let histIdx = 0, histN = 0;
+  let frameDiv = 0; const hist = new Array(DECEL_HIST).fill(0), histT = new Array(DECEL_HIST).fill(0); let histIdx = 0, histN = 0;
   let clampHist = 0, frameClamp = false, frameSeq = 0;
   let decelFrames = 0, steadyFrames = 0, decelArmed = false, lastRiseMs = 0;
-  let burstActive = false, burstStartMs = 0, burstMin = 0, burstRate0 = 0, burstSlowFrames = 0;
+  let burstActive = false, burstStartMs = 0, burstMin = 0, burstRate0 = 0, burstSlowFrames = 0, burstRiseFrames = 0;
   let decelQuietMs = 0;
   // ghost
   let ghostUnstableMs = 0;
@@ -265,8 +273,14 @@ function createCore(hw) {
   function startSeq(reason, r, lim, isLimiter, now) {
     seqReason = reason; seqLimit = lim;
     const escalate = isLimiter && r >= lim + LIMIT_ESCALATE;
-    const p = rtPattern;
-    if (p === 4 && !escalate && !floodLock && reason !== CUT_LAUNCH) {
+    let p = rtPattern;
+    // Decel pops always use a pattern with fired slots (flames for hard / cannon): their tach pulses
+    // are what lets a re-acceleration abort the burst within ~200 ms.
+    if (reason === CUT_DECEL && (p === 0 || p === 4)) p = 1;
+    // Cannon (continuous cut) only for the show button / physical switch 2-step. Redline and
+    // hands-free launch use hard cut (a silent phase hides a clutch drop, a second of full cut in
+    // gear at the redline feels like a stall).
+    if (p === 4 && !escalate && !floodLock && (reason === CUT_SHOW || reason === CUT_SWITCH)) {
       seqMode = SEQ_CANNON_CUT; seqStartUs = now;
       return floodCheck(now);
     }
@@ -360,6 +374,7 @@ function createCore(hw) {
     let fresh = false;
     if (havePrev) {
       const dt = u32(now - lastRealUs);
+      lastGapUs = dt; everPulsed = true;
       let n = 0;
       if (slotsSinceReal === 0) {
         n = 1;                                              // consecutive fired slots
@@ -393,6 +408,7 @@ function createCore(hw) {
           ringPush(accDt, accN); candPer = 0; candRun = 0; splitDt = 0;
           if (accN <= 2) cleanFlag = true;
           rpmMeas = udiv(RPM_CONST, periodUs);
+          measCenterMs = u32(msClock - udiv(measWinUs, 2000));   // the estimate describes the middle of its window
           rpmSlow = rpmSlow === 0 ? rpmMeas : rpmSlow + sdiv(rpmMeas - rpmSlow, 16);
           measSeq = u32(measSeq + 1); fresh = true;
         }
@@ -500,10 +516,19 @@ function createCore(hw) {
     frameDiv = 0;
     const freshFrame = measSeq !== frameSeq; frameSeq = measSeq;
     clampHist = u32((clampHist << 1) | (frameClamp ? 1 : 0)); frameClamp = false;
-    hist[histIdx] = rpmMeas; histIdx = (histIdx + 1) % DECEL_HIST; if (histN < DECEL_HIST) histN++;
-    const haveSlope = histN >= 5;
+    hist[histIdx] = rpmMeas; histT[histIdx] = measCenterMs;
+    histIdx = (histIdx + 1) % DECEL_HIST; if (histN < DECEL_HIST) histN++;
+    // rpm change per 80 ms between the newest sample and the one 4 frames older, normalised by the real
+    // time between the two measurements (during a burst a new measurement only comes every few slots)
+    const iNew = (histIdx + DECEL_HIST - 1) % DECEL_HIST, iOld = (histIdx + DECEL_HIST - 5) % DECEL_HIST;
+    const spanMs = u32(histT[iNew] - histT[iOld]);
+    const haveSlope = histN >= 5 && spanMs >= DECEL_SLOPE_MIN_MS && spanMs < 1000;
     let slope = 0;
-    if (haveSlope) slope = hist[(histIdx + DECEL_HIST - 1) % DECEL_HIST] - hist[(histIdx + DECEL_HIST - 5) % DECEL_HIST];
+    if (haveSlope) slope = sdiv((hist[iNew] - hist[iOld]) * 80, spanMs);
+    // reference decline for a burst: whole history (7 frames), less sensitive to measurement ripple
+    const iFirst = histIdx % DECEL_HIST, spanLongMs = u32(histT[iNew] - histT[iFirst]);
+    const slopeLong = (histN >= DECEL_HIST && spanLongMs >= DECEL_SLOPE_MIN_MS && spanLongMs < 1000) ?
+      sdiv((hist[iNew] - hist[iFirst]) * 80, spanLongMs) : slope;
     const clean = haveSlope && freshFrame && !stopped && (clampHist & DECEL_CLEAN_MASK) === 0;
     if (clean) {
       if (slope >= DECEL_RISE_80) lastRiseMs = msClock;
@@ -519,19 +544,20 @@ function createCore(hw) {
     const loadDrop80 = udiv((MODEL_DECEL_BASE + udiv(rpmMeas * MODEL_DECEL_PCT, 100)) * 80 * DECEL_LOAD_FACTOR, 1000);
     if (burstActive) {
       if (freshFrame && rpmMeas < burstMin) burstMin = rpmMeas;
+      if (freshFrame) { if (rpmMeas > burstMin + DECEL_ABORT_RISE) burstRiseFrames++; else burstRiseFrames = 0; }
       const el = u32(msClock - burstStartMs);
-      if (rtPattern >= 1 && rtPattern <= 3 && freshFrame && haveSlope && el >= 100) {
-        if (slope > sdiv(burstRate0, 2)) burstSlowFrames++; else burstSlowFrames = 0;
+      if (freshFrame && haveSlope && el >= DECEL_REACCEL_AFTER_MS) {
+        if (slope * 100 > burstRate0 * DECEL_REACCEL_PCT) burstSlowFrames++; else burstSlowFrames = 0;
       }
       if (!rtDecelPops || twoStep || decelQuietMs > 0 || limEngaged || el >= DECEL_BURST_MS || r < DECEL_ABORT_RPM ||
-          (freshFrame && rpmMeas > burstMin + DECEL_ABORT_RISE) || burstSlowFrames >= 2 ||
+          burstRiseFrames >= DECEL_REACCEL_FRAMES || burstSlowFrames >= DECEL_REACCEL_FRAMES ||
           (freshFrame && haveSlope && slope < -loadDrop80)) {
         burstActive = false; decelFrames = 0; steadyFrames = 0;
       }
     } else if (rtDecelPops && rtArmed && decelArmed && decelFrames >= DECEL_TRIG_FRAMES &&
                u32(msClock - lastRiseMs) >= DECEL_NO_RISE_MS && r >= rtDecelRpm && !twoStep && decelQuietMs === 0 &&
                !limEngaged && slope >= -loadDrop80) {
-      burstActive = true; burstStartMs = msClock; burstMin = rpmMeas; burstRate0 = slope; burstSlowFrames = 0;
+      burstActive = true; burstStartMs = msClock; burstMin = rpmMeas; burstRate0 = slopeLong; burstSlowFrames = 0; burstRiseFrames = 0;
       decelArmed = false; decelFrames = 0;
     }
   }
@@ -545,12 +571,19 @@ function createCore(hw) {
       u32(msClock - ghostUnstableMs) >= GHOST_SETTLE_MS;
   }
 
+  // Bench test: show button only; engine truly stopped = no edge and no cut for 2 s AND either no
+  // tach pulse since boot or the last interval before the pulses stopped was slow (< 400 rpm, engine
+  // stalling / cranking). A tach wire lost while the engine runs at idle or in gear never qualifies.
+  // One session lasts at most 10 s, then the button has to be released. Ends on any tach edge.
   function benchStep(now) {
     const want = rtArmed && !inhibitCut && showActive;
+    if (!showActive) benchNeedRelease = false;
     if (benchActive) {
       if (!want) { benchActive = false; clampSet(false, now); }
-    } else if (want && stopped && noEdgeMs >= BENCH_STOP_MS && noCutMs >= BENCH_STOP_MS) {
-      seqReset(); benchActive = true; clampSet(true, now);
+      else if (u32(msClock - benchStartMs) >= BENCH_MAX_MS) { benchActive = false; clampSet(false, now); benchNeedRelease = true; }
+    } else if (want && !benchNeedRelease && stopped && noEdgeMs >= BENCH_STOP_MS && noCutMs >= BENCH_STOP_MS &&
+               (!everPulsed || lastGapUs >= BENCH_STOP_GAP_US)) {
+      seqReset(); benchActive = true; benchStartMs = msClock; clampSet(true, now);
     }
   }
 
