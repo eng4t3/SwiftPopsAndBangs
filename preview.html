@@ -340,8 +340,9 @@
 <details class="card" id="grpLog">
   <summary><span class="ico">📈</span><span class="st">ADATNAPLÓ</span><span id="sumLog" class="sv"></span><i class="chev"></i></summary>
   <div class="cb">
+    <div class="row"><div class="lbl"><b>Naplózás</b><small>Kikapcsolva a vezérlő nem ír a flash-be: a menetnapló és az eseményfelvételek szünetelnek. A meglévő felvételek megmaradnak.</small></div><label class="sw"><input type="checkbox" id="logEn" checked onchange="logToggle(this.checked)" aria-label="Naplózás"><span></span></label></div>
     <div id="logSt" class="ota-st" hidden><span class="ota-msg"></span><span class="bar"><i></i></span></div>
-    <div class="btn-row"><button class="btn" onclick="logSnap()">📌 MENTÉS MOST (utolsó 60 mp)</button><button class="btn warn" onclick="logClear()">🗑 NAPLÓ TÖRLÉSE</button></div>
+    <div class="btn-row"><button class="btn" id="logSnapBtn" onclick="logSnap()">📌 MENTÉS MOST (utolsó 60 mp)</button><button class="btn warn" onclick="logClear()">🗑 NAPLÓ TÖRLÉSE</button></div>
     <div id="logView" class="box" hidden>
       <div class="row"><b id="lvTitle" class="box-h"></b><button class="icon-btn" onclick="lvClose()" aria-label="Bezárás">✕</button></div>
       <canvas id="lvCv"></canvas>
@@ -481,7 +482,7 @@
   </div>
   <div class="msec">
     <h3>📈 Adatnapló</h3>
-    <p>A vezérlő magától rögzít a flash-ébe: az egész útról 25 mintát másodpercenként (fordulat, tiltás, rajt állapot), eseményeknél (rajt, redline, anti-flood, rendellenesség, kézi mentés) gyújtásonkénti részletességgel is. Gyújtáslevétel után is megmarad, vezetés közben nem kell hozzá a telefon, és csak akkor ír, amikor semmi nem tilt. A CSV letölthető, és elküldheted elemzésre, hangolásra.</p>
+    <p>A vezérlő magától rögzít a flash-ébe: az egész útról 25 mintát másodpercenként (fordulat, tiltás, rajt állapot), eseményeknél (rajt, redline, anti-flood, rendellenesség, kézi mentés) gyújtásonkénti részletességgel is. Gyújtáslevétel után is megmarad, vezetés közben nem kell hozzá a telefon, és csak akkor ír, amikor semmi nem tilt. A CSV letölthető, és elküldheted elemzésre, hangolásra. A Naplózás kapcsolóval kikapcsolható: ilyenkor semmit nem ír, a meglévő felvételek megmaradnak.</p>
   </div>
   <div class="msec">
     <h3>📡 Firmware frissítés</h3>
@@ -1296,13 +1297,18 @@ const logUi = otaUi('logSt'), LV = {};
 let logKey = '';
 
 async function logRefresh(force) {
-  const st = await api('/api/log/status', { timeout: 3000 }).catch(e => e.message);
-  if (!st.ok) return logUi.set(typeof st === 'string' && st || 'Ezen a firmware-en nincs adatnapló (v2.1 kell).', 'warn');
-  const pf = st.poolFree || {}, low = pf.cap === 0 || pf.drive === 0;
-  logUi.set([st.flash ? '✔ Flash rendben' : '⚠ Flash hiba, csak RAM-puffer', st.captures + ' esemény, ' + st.drives + ' út',
-    st.writing ? '● felvétel fut' : '⏸ írás szünetel', st.pending && st.pending + ' mentésre vár',
+  const st = await api('/api/log/status', { timeout: 3000 }).catch(e => e.message), on = st.enabled !== false;
+  $('logEn').disabled = typeof st !== 'object';
+  if (typeof st !== 'object') return logUi.set(st || 'Ezen a firmware-en nincs adatnapló (v2.1 kell).', 'warn');
+  if (!logBusy) logEnUi(on);
+  const pf = st.poolFree || {}, low = pf.cap === 0 || pf.drive === 0, n = st.captures + ' esemény, ' + st.drives + ' út';
+  if (!on) logUi.set('⏸ KIKAPCSOLVA – nem ír a flash-be • ' + n + ' megmaradt', 'warn');
+  else if (!st.ok) logUi.set('⚠ A naplózó nem fut (flash-hiba: ' + (st.flashErrors | 0) + ')', 'err');
+  else logUi.set([st.flash ? '✔ Flash rendben' : '⚠ Flash hiba, csak RAM-puffer', n, st.writing ? '● felvétel fut' : '⏸ írás szünetel',
+    st.pending && st.pending + ' mentésre vár', st.flashErrors && st.flashErrors + ' flash-hiba',
     st.gapNow ? 'most hézag van az útnaplóban' : low && 'elfogyott a tartalék – alapjáraton pótolja'].filter(x => x).join(' • '), !st.flash || st.gapNow || low ? 'warn' : 'ok');
-  txt('sumLog', (st.writing ? '● ' : '') + st.captures + ' esemény');
+  txt('sumLog', !on ? 'KI' : (st.writing ? '● ' : '') + st.captures + ' esemény');
+  $('sumLog').className = 'sv' + (on ? '' : ' off');
   const key = [st.captures, st.drives, st.boot] + '';
   if (force || key !== logKey) { logKey = key; logList(); }
 }
@@ -1316,6 +1322,18 @@ async function logPost(what, done) {
   const r = await api('/api/log/' + what, { method: 'POST', body: '', timeout: 5000 }).catch(e => ({ ok: false, msg: e.message }));
   if (r.ok === false) toast(r.msg || 'A vezérlő elutasította.', 'err'); else done(r);
 }
+// Naplózás switch: optimistic, reverted with a toast when POST /api/log/config fails
+let logBusy = false;
+function logEnUi(on) { $('logEn').checked = on; $('logSnapBtn').disabled = !on; }
+async function logToggle(on) {
+  logEnUi(on);
+  logBusy = true;
+  const r = await api('/api/log/config', { method: 'POST', body: 'enabled=' + (on ? 1 : 0), timeout: 5000 }).catch(e => ({ ok: false, msg: e.message }));
+  logBusy = false;
+  if (r.ok === false) { logEnUi(!on); toast('Nem sikerült: ' + (r.msg || 'hiba'), 'err'); }
+  else toast(on ? '● Naplózás bekapcsolva' : '⏸ Naplózás kikapcsolva');
+  logRefresh();
+}
 function logSnap() { logPost('snap', r => { toast('📌 Mentve: #' + r.id); setTimeout(() => logRefresh(true), 1500); }); }
 function logClear() {
   if (confirm('Törlöd az összes eseményt és utat az adatnaplóból?\nEz nem vonható vissza.')) logPost('clear', () => { toast('🗑 Adatnapló törölve'); lvClose(); logRefresh(true); });
@@ -1326,7 +1344,7 @@ function parseLog(text) {
   let cols = SMP_COLS, tr = 0;
   for (const line of String(text).split('\n')) {
     const v = line.trim(), a = v.split(','), m = /^#\s*([\w.]+)=(.*)/.exec(v), g = k => +a[cols.indexOf(k)] || 0;
-    if (/^#\s*trace/.test(v)) { tr = 1; cols = ['t_us', 'kind']; }
+    if (/^#\s*trace$/.test(v)) { tr = 1; cols = ['t_us', 'kind']; }
     else if (m) d.h[m[1]] = m[2].trim();
     else if (!v || v[0] === '#') continue;
     else if (isNaN(a[0])) cols = a;
@@ -1352,7 +1370,7 @@ async function lvOpen(url, title, drive) {
   // counts, max, HOLDING stats, header summary / diag fields
   $('lvKv').innerHTML = row('Minták', d.t.length + (d.tr.length ? ' + ' + d.tr.length + ' gyújtás' : '')) + row('Max. RPM', d.max)
     + (hold.length ? row('HOLDING min/átl/max', Math.min(...hold) + ' / ' + Math.round(hold.reduce((a, b) => a + b) / hold.length) + ' / ' + Math.max(...hold)) : '')
-    + Object.keys(h).filter(k => !(k in CFG_DEF) && !/^(fw|type|id|boot|t0_ms|trigger_ms)$/.test(k)).map(k => row(k, h[k])).join('');
+    + Object.keys(h).filter(k => !(k in CFG_DEF) && !/^(fw|type|id|boot|t0_ms|trigger_ms|dur_ms|n|trace|from_ms|to_ms)$/.test(k)).map(k => row(k, h[k])).join('');
   lvDraw();
   $('logView').scrollIntoView({ block: 'nearest' });
 }
@@ -1514,15 +1532,18 @@ function makeSim() {
         if (s.ota.state !== 'available') return bad('Előbb futtass ellenőrzést.');
         s.run(true).catch(() => {}); return { ok: true };
       case '/api/ota/cancel': s.job++; step('idle', 'Megszakítva.'); return { ok: true };
-      case '/api/log/status': return { ok: true, flash: true, captures: s.caps.length, drives: s.drives.length, poolFree: { cap: 20, drive: 32 }, writing: !s.cutStart && !s.ls, boot: 12 };
+      case '/api/log/status': return { ok: true, enabled: s.logOn, flash: true, captures: s.caps.length, drives: s.drives.length, poolFree: { cap: 20, drive: 32 }, writing: s.logOn && !s.cutStart && !s.ls, boot: 12 };
+      case '/api/log/config': s.logOn = p.get('enabled') === '1'; return { ok: true, enabled: s.logOn };
       case '/api/log/list': return { captures: s.caps, drives: s.drives };
-      case '/api/log/snap': s.caps.unshift({ id: s.nextId, boot: 12, type: 'manual', t0: Date.now() - s.bootAt, dur: 60000, sum: 'Kézi mentés' }); return { ok: true, id: s.nextId++ };
+      case '/api/log/snap': if (!s.logOn) return bad('A naplózás ki van kapcsolva');
+        s.caps.unshift({ id: s.nextId, boot: 12, type: 'manual', t0: Date.now() - s.bootAt, dur: 60000, sum: 'Kézi mentés' }); return { ok: true, id: s.nextId++ };
       case '/api/log/clear': s.caps = []; s.drives = []; return { ok: true };
     }
     throw new Error('HTTP 404');
   };
   // Data logger mock: captures (with a trace per ignition slot) and drives
   s.nextId = 58;
+  s.logOn = true;
   s.caps = [
     { id: 57, boot: 12, type: 'launch', t0: 754000, dur: 8200, sum: 'Rajt: 2,9 s tartás' },
     { id: 56, boot: 12, type: 'redline', t0: 512000, dur: 6000, sum: 'Redline: 1,5 s' },
