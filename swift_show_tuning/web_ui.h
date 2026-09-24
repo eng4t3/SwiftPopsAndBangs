@@ -26,7 +26,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   :root {
     --bg: #07090e; --panel: #101622eb; --inset: #080c14bf; --line: #ffffff14;
     --cyan: #00f0ff; --amber: #ffaa00; --red: #ff2247; --red-glow: #ff224780; --green: #00ff88;
-    --text: #f0f4fc; --muted: #8391aa;
+    --text: #f0f4fc; --muted: #8391aa; --tb: calc(60px + env(safe-area-inset-bottom));
     --disp: 'Orbitron', 'Segoe UI', Roboto, Arial, sans-serif;
     --body: 'Rajdhani', 'Roboto Condensed', 'Arial Narrow', sans-serif-condensed, system-ui, sans-serif;
   }
@@ -35,12 +35,21 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   body {
     background: var(--bg) radial-gradient(circle at 50% 0%, #151d2c 0%, #07090e 70%) no-repeat;
     color: var(--text); font: 600 16px/1.3 var(--body); min-height: 100vh; overflow-x: hidden;
-    padding: 10px 12px calc(28px + env(safe-area-inset-bottom)); user-select: none; -webkit-user-select: none; -webkit-text-size-adjust: 100%;
+    padding: 10px 12px calc(var(--tb) + 12px); user-select: none; -webkit-user-select: none; -webkit-text-size-adjust: 100%;
   }
   input { user-select: text; -webkit-user-select: text; }
   button { font: inherit; color: inherit; cursor: pointer; touch-action: manipulation; }
   :focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
-  .wrap { max-width: 440px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+  .wrap, .page { max-width: 440px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; }
+  .page { width: 100%; }
+  /* Bottom tab bar */
+  .tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; display: grid; grid-template-columns: repeat(4, 1fr); height: var(--tb); padding-bottom: env(safe-area-inset-bottom); background: #0b111cf5; border-top: 1px solid var(--line); box-shadow: 0 -8px 24px #0009; }
+  .tabbar button { position: relative; background: none; border: 0; color: var(--muted); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font: 800 .56rem var(--disp); letter-spacing: .5px; }
+  .tabbar span { font-size: 1.25rem; }
+  .tabbar button.on { color: var(--cyan); box-shadow: inset 0 2px 0 var(--cyan); }
+  .bdg { position: absolute; top: 8px; right: calc(50% - 20px); width: 9px; height: 9px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+  #bdgSys { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .pill.cut { color: #fff; background: var(--red); border-color: var(--red); }
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: 20px; box-shadow: 0 12px 32px #00000080; }
   @keyframes blink { from { opacity: .25; } to { opacity: 1; } }
   @keyframes flash { from { transform: scale(.97); opacity: .85; } to { transform: scale(1.03); opacity: 1; } }
@@ -65,11 +74,11 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 6px currentColor; }
   .icon-btn { width: 40px; height: 40px; border-radius: 50%; background: #00f0ff1f; border: 1px solid #00f0ff73; color: var(--cyan); font: 900 1rem var(--disp); }
   .icon-btn:active { background: var(--cyan); color: var(--bg); }
-  .demo-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px 8px 14px; border-radius: 14px; border: 1px dashed #ffaa008c; background: #ffaa0014; font-size: .8rem; color: #ffd98a; }
+  .demo-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 4px 6px 4px 12px; border-radius: 14px; font-size: .74rem; border: 1px dashed #ffaa008c; background: #ffaa0014; color: #ffd98a; }
   .demo-bar .btn { width: auto; flex-shrink: 0; touch-action: none; }
 
   /* RPM readout */
-  .cluster { padding: 12px 14px 12px; display: flex; flex-direction: column; gap: 10px; }
+  .cluster { padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
   .cluster.cutting { border-color: #ff224799; box-shadow: 0 0 28px #ff22474c; }
   .cut-line { font: 900 .78rem var(--disp); letter-spacing: 1.5px; text-align: center; padding: 8px 10px; border-radius: 12px; border: 1px solid var(--line); background: #00000059; color: var(--muted); white-space: nowrap; }
   .cut-line.on { background: #ff224740; border-color: var(--red); color: #fff; box-shadow: 0 0 16px var(--red-glow); }
@@ -102,12 +111,12 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   .scale span { width: 0; display: flex; justify-content: center; }
 
   /* Launch control */
-  .launch { padding: 12px; }
+  .launch { padding: 10px; }
   .seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
   .seg button { padding: 8px 6px; min-height: 48px; border-radius: 12px; background: #0e1420e6; border: 1px solid var(--line); color: var(--muted); display: flex; align-items: center; justify-content: center; }
   .seg b { font: 800 .66rem var(--disp); letter-spacing: .5px; }
   .seg button.active { background: #00f0ff24; border-color: var(--cyan); color: var(--cyan); box-shadow: 0 0 14px #00f0ff40; }
-  .fire-btn { width: 100%; min-height: 104px; padding: 12px 10px 16px; border-radius: 20px; border: 2px solid var(--red); background: linear-gradient(180deg, #2a0b12, #130407); display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 6px; position: relative; overflow: hidden; box-shadow: 0 8px 28px #ff22474c, inset 0 1px 0 #ffffff26; transition: transform .05s, background .1s; -webkit-touch-callout: none; }
+  .fire-btn { width: 100%; min-height: 96px; padding: 10px 10px 14px; border-radius: 20px; border: 2px solid var(--red); background: linear-gradient(180deg, #2a0b12, #130407); display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 6px; position: relative; overflow: hidden; box-shadow: 0 8px 28px #ff22474c, inset 0 1px 0 #ffffff26; transition: transform .05s, background .1s; -webkit-touch-callout: none; }
   .fire-btn::before { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(45deg, #ffffff05 0 8px, transparent 8px 16px); pointer-events: none; }
   .fire-title { font: 900 1.15rem var(--disp); letter-spacing: 1.2px; text-align: center; text-shadow: 0 0 12px var(--red-glow); }
   .fire-sub { font-size: .8rem; font-weight: 700; letter-spacing: 1px; color: var(--red); text-align: center; }
@@ -127,14 +136,20 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   .ls-steps span.on { color: var(--c, #fff); border-color: var(--c, #6b7a96); }
   .ls-steps span.on[data-s="2"] { background: var(--red); color: #fff; }
   .warn-line { font-size: .85rem; color: #ffd98a; background: #ffaa001a; border: 1px solid #ffaa0059; border-radius: 10px; padding: 8px 10px; }
-  .launch .warn-line { margin-top: 10px; }
+  .launch .warn-line { margin-top: 8px; padding: 6px 10px; cursor: pointer; }
 
   /* Collapsible setting cards */
   .settings { display: flex; flex-direction: column; gap: 12px; }
-  .settings.loading details { opacity: .5; pointer-events: none; }
+  .settings.loading .grp { opacity: .5; pointer-events: none; }
+  .chips { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+  .chips button { min-width: 0; min-height: 58px; padding: 6px 2px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); color: var(--muted); display: flex; flex-direction: column; align-items: center; font-size: 1.05rem; }
+  .chips b { font: 700 .78rem var(--body); color: var(--text); }
+  .chips small { font-size: .68rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+  .chips button.on { border-color: var(--cyan); background: #00f0ff1a; box-shadow: 0 0 12px #00f0ff33; }
+  .grp > .cb { padding-top: 16px; }
   summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; }
   summary::-webkit-details-marker { display: none; }
-  details.card > summary { gap: 10px; min-height: 56px; padding: 10px 16px; }
+  .ch { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 10px 16px; }
   .ico { font-size: 1.15rem; width: 26px; text-align: center; }
   .st { flex: 1; font: 800 .78rem var(--disp); letter-spacing: 1px; }
   .sv { font-weight: 700; color: var(--amber); font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -180,7 +195,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   .save-btn { padding: 12px 14px; min-height: 56px; border-radius: 14px; border: 1px solid #ffffff1a; background: linear-gradient(180deg, #1c2538, #131926); display: flex; flex-direction: column; align-items: center; gap: 2px; box-shadow: 0 4px 15px #0006; }
   .save-btn b { font: 800 .85rem var(--disp); letter-spacing: 1.2px; }
   .save-btn small { font-size: .78rem; color: var(--muted); }
-  .save-btn.dirty, .save-btn.saving { position: sticky; bottom: calc(10px + env(safe-area-inset-bottom)); z-index: 20; }
+  .save-btn.dirty, .save-btn.saving { position: sticky; bottom: calc(var(--tb) + 8px); z-index: 20; }
   .save-btn.dirty { background: linear-gradient(180deg, #3a2a06, #211703); border-color: var(--amber); animation: pulseAmber 1.6s infinite ease-in-out; }
   .save-btn.dirty b { color: var(--amber); }
   .save-btn.dirty small { color: #ffd98a; }
@@ -236,6 +251,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   .li .btn { width: auto; }
   a.btn { display: flex; align-items: center; justify-content: center; text-decoration: none; }
   #lvCv { width: 100%; background: #0b111c; border-radius: 10px; }
+  .overlay { position: fixed; inset: 0; z-index: 1500; overflow-y: auto; background: var(--bg); padding: 12px 12px calc(16px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 10px; }
   #logView input { background: #141b2a; }
 
   /* Help modal */
@@ -273,6 +289,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   <button id="demoGas" class="btn sm">🦶 GÁZ (TARTSD)</button>
 </div>
 
+<section id="pgMain" class="page" hidden>
 <section id="cluster" class="card cluster">
   <div id="cutLine" class="cut-line">NINCS ADAT</div>
   <div class="readout">
@@ -297,36 +314,35 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     <span class="fire-cd"><i id="cdFill"></i></span>
   </button>
   <div id="lsSteps" class="ls-steps"><span data-s="0">OFF</span><span data-s="1" style="--c:#ffaa00">ARMED</span><span data-s="2" style="--c:#ff2247">HOLDING</span><span data-s="3" style="--c:#00ff88">FIRED</span></div>
-  <div id="armWarn" class="warn-line" hidden>⚠ A rendszer ki van kapcsolva, a vezérlő most nem vesz el szikrát. Bekapcsolás: Biztonság kártya.</div>
+  <div id="armWarn" class="warn-line" hidden onclick="go('beallitasok'); showGrp('grpSafety')">⚠ FŐKAPCSOLÓ KI – nem vesz el szikrát ›</div>
+</section>
+<div id="profQ" class="seg" role="group" aria-label="Profil" hidden></div>
 </section>
 
 <!-- slider blocks are built from SLIDERS -->
-<div id="settings" class="settings loading">
+<div id="settings" class="page settings loading" hidden>
   <div id="profBar" class="card prof" hidden><div id="profSeg" class="seg" role="group" aria-label="Profil"></div><button class="icon-btn" onclick="profRename()" aria-label="Profil átnevezése">✎</button></div>
-  <details class="card" id="grpLaunch" open>
-    <summary><span class="ico">🏁</span><span class="st">RAJT / LAUNCH</span><span id="sumLaunch" class="sv"></span><i class="chev"></i></summary>
+  <div id="grpChips" class="chips" role="tablist"><button data-g="grpLaunch">🏁<b>Rajt</b><small id="sumLaunch"></small></button><button data-g="grpLimiter">⚡<b>Limiter</b><small id="sumLimiter"></small></button><button data-g="grpDecel">💥<b>Durrogás</b><small id="sumDecel"></small></button><button data-g="grpSound">🎯<b>Hangzás</b><small id="sumSound"></small></button><button data-g="grpSafety">🛡️<b>Biztonság</b><small id="sumSafety"></small></button></div>
+  <section class="card grp" id="grpLaunch" hidden>
     <div class="cb">
       <div class="sl" data-sl="cfgLaunch"></div>
       <div class="sl" data-sl="cfgDrop"><div id="dropHint" class="hint"></div></div>
       <div id="launchWarn" class="warn-line" hidden>⚠ A rajt limit a redline fölött van – ott a redline tilt előbb.</div>
     </div>
-  </details>
+  </section>
 
-  <details class="card" id="grpLimiter" open>
-    <summary><span class="ico">⚡</span><span class="st">LIMITER / REDLINE</span><span id="sumLimiter" class="sv"></span><i class="chev"></i></summary>
+  <section class="card grp" id="grpLimiter" hidden>
     <div class="cb"><div class="sl" data-sl="cfgRedline"></div></div>
-  </details>
+  </section>
 
-  <details class="card" id="grpDecel" open>
-    <summary><span class="ico">💥</span><span class="st">DURROGÁS / OVERRUN</span><span id="sumDecel" class="sv"></span><i class="chev"></i></summary>
+  <section class="card grp" id="grpDecel" hidden>
     <div class="cb">
       <div class="row"><div class="lbl"><b>Gázelvételi durrogás</b><small>Pufogás motorféken, ha hirtelen elveszed a gázt</small></div><label class="sw"><input type="checkbox" id="cfgDecelPops" checked aria-label="Gázelvételi durrogás"><span></span></label></div>
       <div class="sl" data-sl="cfgDecel" id="decelBlock"></div>
     </div>
-  </details>
+  </section>
 
-  <details class="card" id="grpSound" open>
-    <summary><span class="ico">🎯</span><span class="st">HANGZÁS / MINTÁZAT</span><span id="sumSound" class="sv"></span><i class="chev"></i></summary>
+  <section class="card grp" id="grpSound" hidden>
     <div class="cb">
       <div class="pats" id="pats">
         <button class="pat" data-p="0" data-seq="xxxxxxxx"><b>⚡ KEMÉNY TILTÁS</b><small>Minden szikra kimarad a limit fölött (Bee*R)</small></button>
@@ -338,40 +354,35 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       <div class="hint center">Gyújtásonként: piros = kimaradó szikra, zöld = gyújtás</div>
       <div class="row"><div class="lbl"><b>👻 Ghost Cam™ / V8 alapjárat</b><small>Hegyes vezértengelyes dadogás alapjáraton (650–1250 RPM)</small></div><label class="sw"><input type="checkbox" id="cfgGhostCam" aria-label="Ghost Cam"><span></span></label></div>
     </div>
-  </details>
+  </section>
 
-  <details class="card" id="grpSafety" open>
-    <summary><span class="ico">🛡️</span><span class="st">BIZTONSÁG</span><span id="sumSafety" class="sv"></span><i class="chev"></i></summary>
+  <section class="card grp" id="grpSafety" hidden>
     <div class="cb">
       <div class="row"><div class="lbl"><b>Rendszer élesítve (főkapcsoló)</b><small>Kikapcsolva soha nem vesz el szikrát – a gyári gyújtás 100%-ban működik.<span id="armHint" hidden> Közös, nem része a profiloknak.</span></small></div><label class="sw"><input type="checkbox" id="cfgArmed" checked aria-label="Rendszer élesítve"><span></span></label></div>
       <div class="sl" data-sl="cfgTimeout"><div class="hint">Teljesen jobbra húzva: NINCS LIMIT (∞) – csak óvatosan!</div></div>
     </div>
-  </details>
+  </section>
 
   <button id="saveBtn" class="save-btn" onclick="saveToFlash()"><b id="saveTxt"></b><small id="saveSub"></small></button>
+  <button class="btn warn" id="resetBtn" onclick="restoreDefaults()">🔄 AJÁNLOTT ÉRTÉKEK VISSZAÁLLÍTÁSA</button>
 </div>
 
-<details class="card" id="grpLog">
-  <summary><span class="ico">📈</span><span class="st">ADATNAPLÓ</span><span id="sumLog" class="sv"></span><i class="chev"></i></summary>
+<section id="pgLog" class="page" hidden>
+<section class="card">
+  <div class="ch"><span class="ico">📈</span><span class="st">ADATNAPLÓ</span><span id="sumLog" class="sv"></span></div>
   <div class="cb">
     <div class="row"><div class="lbl"><b>Naplózás</b><small>Kikapcsolva a vezérlő nem ír a flash-be: a menetnapló és az eseményfelvételek szünetelnek. A meglévő felvételek megmaradnak.</small></div><label class="sw"><input type="checkbox" id="logEn" checked onchange="logToggle(this.checked)" aria-label="Naplózás"><span></span></label></div>
     <div id="logSt" class="ota-st" hidden><span class="ota-msg"></span><span class="bar"><i></i></span></div>
     <div class="btn-row"><button class="btn" id="logSnapBtn" onclick="logSnap()">📌 MENTÉS MOST (utolsó 60 mp)</button><button class="btn warn" onclick="logClear()">🗑 NAPLÓ TÖRLÉSE</button></div>
-    <div id="logView" class="box" hidden>
-      <div class="row"><b id="lvTitle" class="box-h"></b><button class="icon-btn" onclick="lvClose()" aria-label="Bezárás">✕</button></div>
-      <canvas id="lvCv"></canvas>
-      <div class="sl-row">🔍<input type="range" id="lvZoom" max="60" value="0" aria-label="Nagyítás">↔<input type="range" id="lvPan" max="1000" value="0" aria-label="Görgetés"></div>
-      <p class="hint">Piros háttér: tiltás • csík: sárga ARMED, piros HOLDING, zöld FIRED • szaggatott: rajt, oldás, redline • alsó sáv: zöld szikra, piros kimaradt, szürke zaj</p>
-      <dl id="lvKv" class="kv"></dl>
-      <a id="lvCsv" class="btn">⬇ CSV LETÖLTÉSE</a>
-    </div>
     <b class="box-h">Események</b><div id="logCaps" class="loglist"></div>
     <b class="box-h">Utak</b><div id="logDrives" class="loglist"></div>
   </div>
-</details>
+</section>
+</section>
 
-<details class="card" id="grpFw">
-  <summary><span class="ico">📡</span><span class="st">FIRMWARE FRISSÍTÉS</span><span id="sumFw" class="sv off">–</span><i class="chev"></i></summary>
+<section id="pgSys" class="page" hidden>
+<section class="card">
+  <div class="ch"><span class="ico">📡</span><span class="st">FIRMWARE FRISSÍTÉS</span><span id="sumFw" class="sv off">–</span></div>
   <div class="cb">
     <div class="fw-cur"><span>Telepített verzió: <b id="fwCur">?</b></span><small id="fwBuilt" class="hint"></small></div>
 
@@ -422,19 +433,31 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       </div>
     </details>
   </div>
-</details>
+</section>
 
-<details class="card" id="grpSys">
-  <summary><span class="ico">⚙️</span><span class="st">RENDSZER</span><i class="chev"></i></summary>
+<section class="card">
+  <div class="ch"><span class="ico">⚙️</span><span class="st">RENDSZER</span></div>
   <div class="cb">
     <dl class="kv">
       <dt>Firmware</dt><dd id="sysFw">–</dd>
       <dt>Szabad memória</dt><dd id="sysHeap">–</dd>
       <dt>Telemetria</dt><dd id="sysRate">–</dd>
     </dl>
-    <button class="btn warn" id="resetBtn" onclick="restoreDefaults()">🔄 AJÁNLOTT ÉRTÉKEK VISSZAÁLLÍTÁSA</button>
+    <button class="btn" onclick="openModal()">ℹ SÚGÓ ÉS FUNKCIÓLEÍRÁSOK</button>
   </div>
-</details>
+</section>
+</section>
+</div>
+
+<nav id="tabbar" class="tabbar" role="tablist"><button data-tab="fooldal"><span>🏁</span>FŐOLDAL</button><button data-tab="beallitasok"><span>⚙️</span>BEÁLLÍTÁSOK<i id="bdgSet" class="bdg" hidden></i></button><button data-tab="naplo"><span>📈</span>NAPLÓ</button><button data-tab="rendszer"><span>📡</span>RENDSZER<i id="bdgSys" class="bdg" hidden></i></button></nav>
+
+<div id="logView" class="overlay" hidden>
+    <div class="row"><b id="lvTitle" class="box-h"></b><button class="icon-btn" onclick="lvClose()" aria-label="Bezárás">✕</button></div>
+    <canvas id="lvCv"></canvas>
+    <div class="sl-row">🔍<input type="range" id="lvZoom" max="60" value="0" aria-label="Nagyítás">↔<input type="range" id="lvPan" max="1000" value="0" aria-label="Görgetés"></div>
+    <p class="hint">Piros háttér: tiltás • csík: sárga ARMED, piros HOLDING, zöld FIRED • szaggatott: rajt, oldás, redline • alsó sáv: zöld szikra, piros kimaradt, szürke zaj</p>
+    <dl id="lvKv" class="kv"></dl>
+    <a id="lvCsv" class="btn">⬇ CSV LETÖLTÉSE</a>
 </div>
 
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -533,8 +556,9 @@ function toast(msg, kind) {
   toastTimer = setTimeout(() => t.classList.remove('show'), kind === 'err' ? 5000 : 2600);
 }
 
-// Live state reported by the firmware
+// Live state reported by the firmware; TAB = the visible page
 const S = { connected: false, rpm: 0, cut: false, reason: 0 };
+let TAB = '';
 
 // ---- RPM readout: big number + slim bar (0..8000 RPM)
 const MAX_RPM = 8000;
@@ -569,6 +593,7 @@ function drawRpm() {
   elFill.className = 'rpm-fill' + zone;
   elFill.style.transform = 'scaleX(' + (Math.min(rpm, MAX_RPM) / MAX_RPM).toFixed(4) + ')';
   if (rpm > G.peak) { G.peak = rpm; txt('peak', 'CSÚCS ' + rpm); }
+  if (TAB !== 'fooldal') renderPill();
 }
 function resetPeak() { G.peak = 0; txt('peak', 'CSÚCS 0'); toast('Csúcsérték nullázva'); }
 
@@ -586,6 +611,14 @@ function renderCut() {
   b.className = 'cut-line' + (on ? (lock ? ' lock' : ' on') : '');
   b.textContent = key === 'x' ? 'NINCS ADAT' : lock ? '⏸ ANTI-FLOOD ZÁR' : on ? '⚡ TILTÁS: ' + (REASONS[S.reason] || 'AKTÍV') : '✓ NINCS TILTÁS';
   $('cluster').classList.toggle('cutting', on && !lock);
+  renderPill();
+}
+// off the main tab the status pill shows the live RPM and turns red while cutting
+function renderPill() {
+  const mini = TAB !== 'fooldal' && S.connected && !wsSuspended;
+  $('statusPill').classList.toggle('cut', mini && cutKey[0] === 'C');
+  if (mini) txt('statusText', G.shown + ' RPM');
+  else if ($('statusText').textContent.endsWith(' RPM')) setConn(S.connected ? 'up' : 'down');
 }
 
 // ---- WebSocket link (port 81): stale detection + reconnect
@@ -633,6 +666,7 @@ function suspendWS(on) {
 function setConn(state) {
   $('statusPill').className = 'pill ' + state;
   txt('statusText', wsSuspended ? 'FRISSÍTÉS…' : state !== 'up' ? 'KERESÉS…' : DEMO ? 'DEMÓ' : 'KAPCSOLÓDVA');
+  renderPill();
 }
 function linkUp() {
   S.connected = true;
@@ -725,7 +759,7 @@ function onLaunchTap() {
   L.lastTapAt = now;
   if (!S.connected) { toast('Nincs kapcsolat a vezérlővel', 'err'); vibrate([30, 30, 30]); return; }
   if (L.state === 0) {
-    if (!$('cfgArmed').checked) { toast('A rendszer ki van kapcsolva (Biztonság kártya)', 'warn'); vibrate([30, 30, 30]); return; }
+    if (!$('cfgArmed').checked) { toast('A főkapcsoló ki van kapcsolva (Beállítások → Biztonság)', 'warn'); vibrate([30, 30, 30]); return; }
     if (!wsSend('LAUNCH:ARM')) { toast('Nincs kapcsolat a vezérlővel', 'err'); return; }
     L.armSentAt = now;
     L.totalMs = L.leftMs = 10000;
@@ -762,7 +796,7 @@ function renderLaunch() {
   txt('fireTitle', title);
   if (sub) txt('fireSub', sub); else renderCountdown(Date.now());
   document.querySelectorAll('#lsSteps span').forEach(s => s.classList.toggle('on', S.connected && +s.dataset.s === L.state));
-  $('armWarn').hidden = $('cfgArmed').checked;
+  $('lsSteps').hidden = !($('armWarn').hidden = $('cfgArmed').checked);
 }
 btn.addEventListener('click', onLaunchTap);
 
@@ -837,7 +871,7 @@ function renderCfg() {
   txt('lgLaunch', c.launchRpm);
   txt('lgRed', c.redlineRpm);
   setRedline(c.redlineRpm);
-  $('armWarn').hidden = c.armed;
+  $('lsSteps').hidden = !($('armWarn').hidden = c.armed);
 }
 function onUserChange(keys) {
   keys.forEach(k => { dirty.add(k); pend.add(k); if (savingKeys) savingKeys.delete(k); });
@@ -889,6 +923,7 @@ function renderSave() {
   $('saveBtn').className = 'save-btn' + (saving ? ' saving' : d ? ' dirty' : '');
   $('saveBtn').disabled = saving || !cfgLoaded;
   const pn = P.names && P.names[P.cur].toUpperCase();
+  $('bdgSet').hidden = !d;
   txt('saveTxt', !cfgLoaded ? '⏳ BEÁLLÍTÁSOK BETÖLTÉSE…' : saving ? '⏳ MENTÉS…' : d ? '💾 MENTÉS' + (pn ? ': ' + pn + ' PROFILBA' : ' A FLASH-BE') : '✔ ' + (pn ? pn + ' PROFIL' : 'BEÁLLÍTÁSOK') + ' MENTVE');
   txt('saveSub', !cfgLoaded ? 'A vezérlő elküldi a jelenlegi értékeket' : saving ? 'Várakozás a vezérlő visszaigazolására' : d ? 'Nem mentett változás – újraindításkor elveszne' : 'Induláskor is ezeket tölti be');
 }
@@ -925,11 +960,11 @@ function saveFailed(why) {
 }
 function renderProf() {
   const on = !!P.names, sel = P.pend >= 0 ? P.pend : P.cur;
-  ['profBar', 'profChip'].forEach(id => { $(id).hidden = !on; });
+  ['profBar', 'profChip', 'profQ'].forEach(id => { $(id).hidden = !on; });
   $('armHint').hidden = !on;
   txt('resetBtn', on ? '🔄 PROFIL VISSZAÁLLÍTÁSA GYÁRI ÉRTÉKRE' : '🔄 AJÁNLOTT ÉRTÉKEK VISSZAÁLLÍTÁSA');
   if (on) {
-    $('profSeg').innerHTML = P.names.map((n, i) => `<button data-p="${i}" class="${i === sel ? 'active' : ''}${i === P.pend ? ' pend' : ''}"><b>${PROF_ICON[i] || ''} ${esc(n)}</b></button>`).join('');
+    $('profSeg').innerHTML = $('profQ').innerHTML = P.names.map((n, i) => `<button data-p="${i}" class="${i === sel ? 'active' : ''}${i === P.pend ? ' pend' : ''}"><b>${PROF_ICON[i] || ''} ${esc(n)}</b></button>`).join('');
     txt('profChip', P.names[P.cur] + ' • ');
   }
   renderSave();
@@ -957,12 +992,12 @@ function profEnd() {
   renderProf();
   queueSend();
 }
-$('profSeg').addEventListener('click', e => {
+['profSeg', 'profQ'].forEach(id => $(id).addEventListener('click', e => {
   const b = e.target.closest('[data-p]'), n = b ? +b.dataset.p : P.cur;
   if (n === P.cur || P.pend >= 0) return;
   if (isDirty() && !confirm('A(z) ' + P.names[P.cur] + ' profil nem mentett változásai elvesznek. Váltasz?')) return;
   profCmd('PROFILE:' + n, n);
-});
+}));
 function profRename() {
   const old = P.names && P.names[P.cur];
   if (!old) return;
@@ -1164,6 +1199,7 @@ async function phoneCheck() {
     else if (m.code === FW.code) p1.set('✔ Naprakész – a legújabb v' + m.version + ' fut.', 'ok');
     else p1.set('A vezérlőn újabb (v' + FW.fw + ') fut, mint a GitHubon (v' + m.version + ').', 'ok');
     $('p1Install').hidden = !newer;
+    $('bdgSys').hidden = !(newer && FW.code);
     txt('p1Install', '⬇ TELEPÍTÉS: v' + m.version);
   } catch (e) { p1.set(e.message, 'err'); }
   setBusy(false);
@@ -1258,7 +1294,7 @@ async function pollTick() {
   if (s) renderOta(s);
   else if (poll.fails > 1) p2.set('⚠ Nincs kapcsolat (az ESP épp a másik Wi-Fi-n lehet) – újrapróbálom… (' + poll.fails + ')', 'warn');
   const busy = s ? OTA_BUSY.includes(s.state) : poll.wasBusy;
-  if (poll.waiting || (!busy && !($('grpFw').open && $('p2Box').open))) { poll.on = false; return; }
+  if (poll.waiting || TAB !== 'rendszer' || (!busy && !$('p2Box').open)) { poll.on = false; return; }
   poll.timer = setTimeout(pollTick, s ? 1000 : 2000);
 }
 function renderOta(s) {
@@ -1269,6 +1305,7 @@ function renderOta(s) {
   const pct = st === 'downloading' || st === 'flashing' ? Math.max(0, Math.min(100, s.progress | 0)) : null;
   p2.set(t, st === 'error' ? 'err' : st === 'uptodate' ? 'ok' : st === 'available' || st === 'done' ? 'go' : 'info', pct);
   $('p2Install').disabled = st !== 'available';
+  if (st === 'available' || st === 'uptodate') $('bdgSys').hidden = st !== 'available';
   $('p2Check').disabled = busy;
   $('p2Cancel').hidden = !busy;
   if (s.latestCode) poll.expect = +s.latestCode;
@@ -1378,6 +1415,7 @@ function parseLog(text) {
   return d;
 }
 async function lvOpen(url, title, drive) {
+  if ($('logView').hidden) history.pushState({ lv: 1 }, '');
   $('logView').hidden = false;
   txt('lvTitle', title + ' …');
   const d = parseLog(await api(url, { timeout: 30000 }).catch(e => { toast(e.message, 'err'); return ''; }));
@@ -1393,9 +1431,10 @@ async function lvOpen(url, title, drive) {
     + (hold.length ? row('HOLDING min/átl/max', Math.min(...hold) + ' / ' + Math.round(hold.reduce((a, b) => a + b) / hold.length) + ' / ' + Math.max(...hold)) : '')
     + Object.keys(h).filter(k => !(k in CFG_DEF) && !/^(fw|type|id|boot|t0_ms|trigger_ms|dur_ms|n|trace|from_ms|to_ms)$/.test(k)).map(k => row(k, h[k])).join('');
   lvDraw();
-  $('logView').scrollIntoView({ block: 'nearest' });
 }
-function lvClose() { $('logView').hidden = true; LV.d = null; }
+function lvClose() { if (history.state && history.state.lv) history.back(); else lvHide(); }
+function lvHide() { $('logView').hidden = true; LV.d = null; }
+window.addEventListener('popstate', () => { if (!$('logView').hidden) lvHide(); });
 // RPM line, cut shading, launch strip, limits, trace lane
 function lvDraw() {
   const d = LV.d, cv = $('lvCv');
@@ -1446,7 +1485,7 @@ $('logDrives').addEventListener('click', e => {
   const b = e.target.closest('[data-drive]');
   if (b) lvOpen('/api/log/drive.csv?boot=' + b.dataset.drive + '&step=' + Math.ceil(b.dataset.n / 3000 || 1), '🚗 ' + b.dataset.drive + '. út', +b.dataset.drive);
 });
-setInterval(() => { if ($('grpLog').open && !document.hidden) logRefresh(); }, 5000);
+setInterval(() => { if (TAB === 'naplo' && !document.hidden) logRefresh(); }, 5000);
 
 // ---- Help modal
 function openModal() { $('infoModal').classList.add('open'); $('infoModal').setAttribute('aria-hidden', 'false'); }
@@ -1627,11 +1666,39 @@ function makeSim() {
 
 // ---- Start
 document.querySelectorAll('[data-track]').forEach(el => el.addEventListener(el.type === 'checkbox' ? 'change' : 'input', () => { el.dataset.edited = '1'; }));
-document.querySelectorAll('details.card').forEach(d => {
-  const saved = store.get('open.' + d.id, null);
-  if (saved !== null) d.open = saved === '1';
-  d.addEventListener('toggle', () => { store.set('open.' + d.id, d.open ? '1' : '0'); if (!d.open) return; if (d.id === 'grpFw' || d.id === 'grpSys') refreshInfo(); if (d.id === 'grpLog') logRefresh(true); });
-});
+// Tabs (#fooldal #beallitasok #naplo #rendszer): FŐOLDAL is the root, so the back button
+// goes from any tab to FŐOLDAL, and from there out of the page
+const TABS = { fooldal: 'pgMain', beallitasok: 'settings', naplo: 'pgLog', rendszer: 'pgSys' };
+let tabPushed = false;
+function showTab(t) {
+  if (!TABS[t]) t = 'fooldal';
+  if (t === TAB) return;
+  TAB = t;
+  for (const k in TABS) $(TABS[k]).hidden = k !== t;
+  document.querySelectorAll('#tabbar button').forEach(b => { b.classList.toggle('on', b.dataset.tab === t); b.setAttribute('aria-selected', b.dataset.tab === t); });
+  scrollTo(0, 0);
+  renderPill();
+  if (t === 'naplo') logRefresh(true);
+  if (t === 'rendszer') { refreshInfo(); if ($('p2Box').open) pollStart(); }
+}
+function go(t) {
+  if (t === TAB) return;
+  if (TAB === 'fooldal') { tabPushed = true; location.hash = t; }
+  else if (t === 'fooldal' && tabPushed) { tabPushed = false; history.back(); }
+  else { history.replaceState(null, '', '#' + t); showTab(t); }
+}
+window.addEventListener('hashchange', () => showTab(location.hash.slice(1)));
+$('tabbar').addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (b) go(b.dataset.tab); });
+// one setting group at a time, picked with the chip row
+function showGrp(id) {
+  if (!$(id)) id = 'grpLaunch';
+  document.querySelectorAll('.grp').forEach(g => { g.hidden = g.id !== id; });
+  document.querySelectorAll('#grpChips button').forEach(b => b.classList.toggle('on', b.dataset.g === id));
+  store.set('grp', id);
+}
+$('grpChips').addEventListener('click', e => { const b = e.target.closest('[data-g]'); if (b) showGrp(b.dataset.g); });
+showGrp(store.get('grp', 'grpLaunch'));
+showTab(location.hash.slice(1));
 $('p2Box').addEventListener('toggle', () => { if ($('p2Box').open) { refreshInfo(); pollStart(); } });
 window.addEventListener('beforeunload', e => { if (isDirty() && !FW.reloading) { e.preventDefault(); e.returnValue = ''; } });
 // Web fonts after load, never blocking (no internet on the car Wi-Fi)

@@ -21,7 +21,7 @@ HEADER = ROOT / "swift_show_tuning" / "web_ui.h"
 PREVIEW = ROOT / "preview.html"
 OPEN = 'R"rawliteral('
 CLOSE = ')rawliteral"'
-FLASH_BUDGET = 100 * 1024  # page budget in flash (v2.1: data logger included)
+FLASH_BUDGET = 104 * 1024  # page budget in flash (v2.2: tabs, profiles, logger)
 
 
 def extract_page(header_text: str) -> str:
