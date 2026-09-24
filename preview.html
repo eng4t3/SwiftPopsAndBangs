@@ -1,1965 +1,1426 @@
 <!DOCTYPE html>
 <html lang="hu">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
-  <title>Suzuki Swift 1.3 8V - Show Tuning Vezérlő</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800;900&family=Rajdhani:wght@600;700;800&display=swap" rel="stylesheet">
-  <style>
-    :root {
-      --bg-gradient: radial-gradient(circle at 50% 10%, #151d2c 0%, #07090e 75%);
-      --panel-bg: rgba(16, 22, 34, 0.85);
-      --panel-border: rgba(255, 255, 255, 0.08);
-      --neon-cyan: #00f0ff;
-      --neon-amber: #ffaa00;
-      --neon-red: #ff2247;
-      --neon-red-glow: rgba(255, 34, 71, 0.5);
-      --neon-green: #00ff88;
-      --text-main: #f0f4fc;
-      --text-muted: #7e8da6;
-    }
-
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-      user-select: none;
-      -webkit-user-select: none;
-      font-family: 'Rajdhani', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    }
-
-    body {
-      background: #07090e;
-      background-image: var(--bg-gradient);
-      color: var(--text-main);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      min-height: 100vh;
-      padding: 12px 14px 28px;
-      overflow-x: hidden;
-    }
-
-    /* Cockpit Top Bar */
-    .header-bar {
-      width: 100%;
-      max-width: 440px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 10px 14px;
-      background: var(--panel-bg);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      border: 1px solid var(--panel-border);
-      border-radius: 16px;
-      margin-bottom: 12px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
-    }
-
-    .brand-wrap {
-      display: flex;
-      flex-direction: column;
-    }
-
-    .brand-title {
-      font-family: 'Orbitron', sans-serif;
-      font-size: 0.95rem;
-      font-weight: 900;
-      letter-spacing: 1.5px;
-      color: #fff;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-
-    .brand-badge {
-      background: linear-gradient(135deg, #ff2247 0%, #aa0720 100%);
-      color: #fff;
-      font-size: 0.62rem;
-      padding: 2px 7px;
-      border-radius: 4px;
-      font-weight: 800;
-      letter-spacing: 0.5px;
-    }
-
-    .brand-sub {
-      font-size: 0.7rem;
-      color: var(--text-muted);
-      font-weight: 700;
-      letter-spacing: 1.5px;
-    }
-
-    .header-actions {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .info-btn {
-      width: 32px;
-      height: 32px;
-      border-radius: 50%;
-      background: rgba(0, 240, 255, 0.12);
-      border: 1px solid rgba(0, 240, 255, 0.45);
-      color: var(--neon-cyan);
-      font-family: 'Orbitron', sans-serif;
-      font-size: 0.95rem;
-      font-weight: 900;
-      cursor: pointer;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      transition: all 0.2s ease;
-      box-shadow: 0 0 10px rgba(0, 240, 255, 0.2);
-      padding: 0;
-      line-height: 1;
-      -webkit-tap-highlight-color: transparent;
-    }
-
-    .info-btn:hover, .info-btn:active {
-      background: var(--neon-cyan);
-      color: #07090e;
-      box-shadow: 0 0 18px rgba(0, 240, 255, 0.75);
-      transform: scale(1.08);
-    }
-
-    .status-pill {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-family: 'Orbitron', sans-serif;
-      font-size: 0.65rem;
-      font-weight: 800;
-      letter-spacing: 1px;
-      padding: 5px 12px;
-      border-radius: 20px;
-      background: rgba(0, 0, 0, 0.5);
-      border: 1px solid var(--panel-border);
-      color: var(--text-muted);
-      transition: all 0.25s ease;
-    }
-
-    .status-pill.connected {
-      color: var(--neon-green);
-      border-color: rgba(0, 255, 136, 0.4);
-      background: rgba(0, 255, 136, 0.1);
-      box-shadow: 0 0 12px rgba(0, 255, 136, 0.2);
-    }
-
-    .status-pill.spark-cut {
-      color: #fff;
-      background: var(--neon-red);
-      border-color: #fff;
-      box-shadow: 0 0 20px var(--neon-red-glow);
-      animation: alertFlash 0.12s infinite alternate;
-    }
-
-    .status-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: currentColor;
-      box-shadow: 0 0 6px currentColor;
-    }
-
-    @keyframes alertFlash {
-      from { transform: scale(0.96); opacity: 0.85; }
-      to { transform: scale(1.04); opacity: 1; }
-    }
-
-    /* Gauge Cluster Card */
-    .cluster-card {
-      width: 100%;
-      max-width: 440px;
-      background: var(--panel-bg);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
-      border: 1px solid var(--panel-border);
-      border-radius: 24px;
-      padding: 12px 10px 16px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      position: relative;
-      box-shadow: 0 18px 45px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255,255,255,0.06);
-      margin-bottom: 14px;
-    }
-
-    .gauge-wrapper {
-      width: 320px;
-      height: 240px;
-      position: relative;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-    }
-
-    .tach-svg {
-      width: 100%;
-      height: 100%;
-      overflow: visible;
-    }
-
-    /* Dedicated Digital Display Bar Underneath Gauge */
-    .cluster-digital-bar {
-      width: 92%;
-      background: rgba(8, 12, 18, 0.92);
-      border: 1px solid rgba(0, 240, 255, 0.25);
-      border-radius: 16px;
-      padding: 8px 18px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-top: -8px;
-      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6), inset 0 0 12px rgba(0, 240, 255, 0.05);
-      position: relative;
-      z-index: 5;
-    }
-
-    .digital-left {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-    }
-
-    .digital-rpm {
-      font-family: 'Rajdhani', sans-serif;
-      font-size: 2.9rem;
-      font-weight: 800;
-      line-height: 0.88;
-      letter-spacing: -1px;
-      color: #fff;
-      text-shadow: 0 0 12px rgba(0, 240, 255, 0.5);
-      font-variant-numeric: tabular-nums;
-      transition: color 0.15s;
-    }
-
-    .digital-rpm.rev-warning {
-      color: var(--neon-amber);
-      text-shadow: 0 0 18px rgba(255, 170, 0, 0.6);
-    }
-
-    .digital-rpm.rev-danger {
-      color: var(--neon-red);
-      text-shadow: 0 0 22px rgba(255, 34, 71, 0.8);
-    }
-
-    .unit-tag {
-      font-family: 'Orbitron', sans-serif;
-      font-size: 0.62rem;
-      font-weight: 700;
-      letter-spacing: 2px;
-      color: var(--text-muted);
-      margin-top: 4px;
-    }
-
-    .digital-right {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-end;
-      gap: 4px;
-    }
-
-    .peak-tag {
-      font-family: 'Orbitron', sans-serif;
-      font-size: 0.68rem;
-      font-weight: 800;
-      color: var(--neon-amber);
-      background: rgba(255, 170, 0, 0.12);
-      border: 1px solid rgba(255, 170, 0, 0.3);
-      border-radius: 6px;
-      padding: 3px 8px;
-      letter-spacing: 1px;
-      cursor: pointer;
-    }
-
-    .mode-badge-mini {
-      font-size: 0.65rem;
-      font-weight: 700;
-      color: var(--text-muted);
-      letter-spacing: 1px;
-    }
-
-    .spark-alert-banner {
-      position: absolute;
-      top: 10px;
-      background: rgba(255, 34, 71, 0.2);
-      border: 1px solid var(--neon-red);
-      color: #fff;
-      font-family: 'Orbitron', sans-serif;
-      font-size: 0.7rem;
-      font-weight: 900;
-      letter-spacing: 2.5px;
-      padding: 4px 18px;
-      border-radius: 12px;
-      text-transform: uppercase;
-      box-shadow: 0 0 16px var(--neon-red-glow);
-      opacity: 0;
-      transform: translateY(-5px);
-      transition: all 0.15s ease;
-      pointer-events: none;
-      z-index: 10;
-    }
-
-    .spark-alert-banner.active {
-      opacity: 1;
-      transform: translateY(0);
-    }
-
-    /* 2-Step Launch / Fire Button */
-    .button-section {
-      width: 100%;
-      max-width: 440px;
-      margin-bottom: 14px;
-    }
-
-    .launch-mode-selector {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 8px;
-      width: 100%;
-    }
-
-    .mode-pill {
-      flex: 1;
-      padding: 9px 8px;
-      border-radius: 12px;
-      background: rgba(14, 20, 32, 0.85);
-      border: 1px solid var(--panel-border);
-      color: var(--text-muted);
-      font-family: 'Orbitron', sans-serif;
-      font-size: 0.68rem;
-      font-weight: 800;
-      letter-spacing: 0.5px;
-      cursor: pointer;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      transition: all 0.2s ease;
-      -webkit-tap-highlight-color: transparent;
-    }
-
-    .mode-pill.active {
-      background: rgba(0, 240, 255, 0.15);
-      border-color: var(--neon-cyan);
-      color: var(--neon-cyan);
-      box-shadow: 0 0 14px rgba(0, 240, 255, 0.3);
-    }
-
-    .fire-btn {
-      width: 100%;
-      height: 90px;
-      background: linear-gradient(180deg, #2a0b12 0%, #130407 100%);
-      border: 2px solid var(--neon-red);
-      border-radius: 20px;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      gap: 4px;
-      cursor: pointer;
-      position: relative;
-      overflow: hidden;
-      box-shadow: 0 8px 28px rgba(255, 34, 71, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.15);
-      transition: transform 0.05s ease, box-shadow 0.1s ease, background 0.1s ease;
-      -webkit-tap-highlight-color: transparent;
-    }
-
-    .fire-btn::before {
-      content: '';
-      position: absolute;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background: repeating-linear-gradient(45deg, rgba(255,255,255,0.02), rgba(255,255,255,0.02) 8px, transparent 8px, transparent 16px);
-      pointer-events: none;
-    }
-
-    .fire-btn-title {
-      font-family: 'Orbitron', sans-serif;
-      font-size: 1.25rem;
-      font-weight: 900;
-      letter-spacing: 1.5px;
-      color: #fff;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      text-shadow: 0 0 12px var(--neon-red-glow);
-      text-align: center;
-    }
-
-    .fire-btn-sub {
-      font-size: 0.72rem;
-      font-weight: 700;
-      letter-spacing: 1px;
-      color: var(--neon-red);
-      text-transform: uppercase;
-      text-align: center;
-    }
-
-    .fire-btn:active, .fire-btn.pressed {
-      background: var(--neon-red);
-      transform: translateY(3px) scale(0.985);
-      box-shadow: 0 0 45px rgba(255, 34, 71, 0.95), inset 0 0 15px rgba(0, 0, 0, 0.4);
-    }
-
-    .fire-btn:active .fire-btn-title, .fire-btn.pressed .fire-btn-title {
-      color: #fff;
-      text-shadow: 0 0 15px #fff;
-    }
-
-    .fire-btn:active .fire-btn-sub, .fire-btn.pressed .fire-btn-sub {
-      color: #fff;
-    }
-
-    /* Hands-Free Button States */
-    .fire-btn.armed {
-      background: linear-gradient(180deg, #332505 0%, #171102 100%);
-      border-color: var(--neon-amber);
-      box-shadow: 0 0 30px rgba(255, 170, 0, 0.6), inset 0 0 15px rgba(255, 170, 0, 0.2);
-      animation: pulseAmber 1.2s infinite ease-in-out;
-    }
-
-    .fire-btn.armed .fire-btn-title {
-      color: #fff;
-      text-shadow: 0 0 14px var(--neon-amber);
-    }
-
-    .fire-btn.armed .fire-btn-sub {
-      color: var(--neon-amber);
-    }
-
-    .fire-btn.holding {
-      background: var(--neon-red);
-      border-color: #fff;
-      box-shadow: 0 0 50px rgba(255, 34, 71, 0.95), inset 0 0 20px rgba(0,0,0,0.5);
-      animation: alertFlash 0.12s infinite alternate;
-    }
-
-    .fire-btn.holding .fire-btn-title {
-      color: #fff;
-      text-shadow: 0 0 18px #fff;
-    }
-
-    .fire-btn.holding .fire-btn-sub {
-      color: #ffe0e6;
-    }
-
-    .fire-btn.fired {
-      background: linear-gradient(180deg, #053315 0%, #02170a 100%);
-      border-color: var(--neon-green);
-      box-shadow: 0 0 35px rgba(0, 255, 136, 0.8);
-    }
-
-    .fire-btn.fired .fire-btn-title {
-      color: #fff;
-      text-shadow: 0 0 15px var(--neon-green);
-    }
-
-    .fire-btn.fired .fire-btn-sub {
-      color: var(--neon-green);
-    }
-
-    @keyframes pulseAmber {
-      0%, 100% { transform: scale(1); box-shadow: 0 0 20px rgba(255, 170, 0, 0.4); }
-      50% { transform: scale(1.02); box-shadow: 0 0 35px rgba(255, 170, 0, 0.85); }
-    }
-
-    /* Tuning Controls Card */
-    .controls-card {
-      width: 100%;
-      max-width: 440px;
-      background: var(--panel-bg);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
-      border: 1px solid var(--panel-border);
-      border-radius: 24px;
-      padding: 20px 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 18px;
-      box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5);
-      margin-bottom: 20px;
-    }
-
-    .control-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .control-label-group {
-      display: flex;
-      flex-direction: column;
-    }
-
-    .control-label {
-      font-size: 1.05rem;
-      font-weight: 700;
-      color: #fff;
-      letter-spacing: 0.5px;
-    }
-
-    .control-sub {
-      font-size: 0.74rem;
-      color: var(--text-muted);
-      font-weight: 600;
-    }
-
-    .control-val-pill {
-      font-family: 'Rajdhani', sans-serif;
-      font-size: 1.15rem;
-      font-weight: 800;
-      padding: 2px 10px;
-      border-radius: 8px;
-      background: rgba(0, 0, 0, 0.55);
-      border: 1px solid var(--panel-border);
-      color: var(--neon-amber);
-      font-variant-numeric: tabular-nums;
-    }
-
-    /* Master Toggle Switch */
-    .switch-wrap {
-      position: relative;
-      display: inline-block;
-      width: 58px;
-      height: 32px;
-    }
-
-    .switch-wrap input {
-      opacity: 0;
-      width: 0;
-      height: 0;
-    }
-
-    .switch-slider {
-      position: absolute;
-      cursor: pointer;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background-color: #1a2233;
-      border: 1px solid var(--panel-border);
-      transition: .25s ease;
-      border-radius: 32px;
-    }
-
-    .switch-slider::before {
-      position: absolute;
-      content: "";
-      height: 24px;
-      width: 24px;
-      left: 3px;
-      bottom: 3px;
-      background-color: #8899af;
-      transition: .25s ease;
-      border-radius: 50%;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.5);
-    }
-
-    input:checked + .switch-slider {
-      background-color: var(--neon-red);
-      border-color: var(--neon-red);
-      box-shadow: 0 0 15px var(--neon-red-glow);
-    }
-
-    input:checked + .switch-slider::before {
-      transform: translateX(26px);
-      background-color: #fff;
-    }
-
-    /* Motorsport Sliders */
-    .slider-block {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    input[type=range] {
-      -webkit-appearance: none;
-      width: 100%;
-      height: 8px;
-      border-radius: 6px;
-      background: #141b2a;
-      outline: none;
-      border: 1px solid rgba(255,255,255,0.06);
-    }
-
-    input[type=range]::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      appearance: none;
-      width: 26px;
-      height: 26px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, #ff416c 0%, #ff2247 100%);
-      cursor: pointer;
-      box-shadow: 0 0 14px rgba(255, 34, 71, 0.7);
-      border: 2px solid #fff;
-    }
-
-    /* Pattern Cards */
-    .pattern-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 8px;
-      width: 100%;
-    }
-
-    .pattern-card {
-      background: rgba(14, 18, 28, 0.8);
-      border: 1px solid var(--panel-border);
-      border-radius: 12px;
-      padding: 10px 8px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 3px;
-      cursor: pointer;
-      transition: all 0.2s ease;
-      text-align: center;
-    }
-
-    .pattern-card.active {
-      background: linear-gradient(180deg, #2b1016 0%, #19090d 100%);
-      border-color: var(--neon-red);
-      box-shadow: 0 0 16px rgba(255, 34, 71, 0.35);
-    }
-
-    .pattern-card.span-2 {
-      grid-column: span 2;
-    }
-
-    .pattern-icon {
-      font-size: 1.15rem;
-    }
-
-    .pattern-title {
-      font-family: 'Orbitron', sans-serif;
-      font-size: 0.68rem;
-      font-weight: 800;
-      color: #fff;
-      letter-spacing: 0.5px;
-    }
-
-    .pattern-desc {
-      font-size: 0.65rem;
-      color: var(--text-muted);
-      line-height: 1.1;
-    }
-
-    /* Slider Step Adjustment Group */
-    .val-adjust-group {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-
-    .step-btn {
-      background: rgba(255, 255, 255, 0.08);
-      border: 1px solid var(--panel-border);
-      color: #fff;
-      font-family: 'Rajdhani', sans-serif;
-      font-size: 1.1rem;
-      font-weight: 800;
-      width: 30px;
-      height: 30px;
-      border-radius: 8px;
-      cursor: pointer;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      transition: all 0.15s ease;
-      user-select: none;
-      -webkit-user-select: none;
-    }
-
-    .step-btn:active {
-      background: var(--neon-cyan);
-      color: #000;
-      transform: scale(0.92);
-    }
-
-    /* Action Buttons */
-    .save-flash-btn {
-      width: 100%;
-      padding: 14px;
-      background: linear-gradient(180deg, #1c2538 0%, #131926 100%);
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 14px;
-      color: #fff;
-      font-family: 'Orbitron', sans-serif;
-      font-size: 0.88rem;
-      font-weight: 800;
-      letter-spacing: 1.5px;
-      text-transform: uppercase;
-      cursor: pointer;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      gap: 8px;
-      box-shadow: 0 4px 15px rgba(0,0,0,0.4);
-      transition: all 0.2s ease;
-    }
-
-    .save-flash-btn:active {
-      transform: scale(0.98);
-      background: #25314a;
-      border-color: var(--neon-cyan);
-    }
-
-    .restore-btn {
-      width: 100%;
-      padding: 12px;
-      margin-top: 10px;
-      background: rgba(255, 170, 0, 0.08);
-      border: 1px solid rgba(255, 170, 0, 0.35);
-      border-radius: 14px;
-      color: var(--neon-amber);
-      font-family: 'Orbitron', sans-serif;
-      font-size: 0.78rem;
-      font-weight: 800;
-      letter-spacing: 1px;
-      text-transform: uppercase;
-      cursor: pointer;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      gap: 8px;
-      transition: all 0.2s ease;
-    }
-
-    .restore-btn:active {
-      background: rgba(255, 170, 0, 0.25);
-      transform: scale(0.98);
-    }
-
-    /* Wireless OTA Update Card */
-    .ota-wrap {
-      width: 100%;
-      margin-top: 8px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .ota-pick-btn {
-      width: 100%;
-      background: rgba(0, 240, 255, 0.08);
-      border: 1px dashed var(--neon-cyan);
-      color: var(--neon-cyan);
-      padding: 10px 14px;
-      border-radius: 10px;
-      font-family: 'Orbitron', sans-serif;
-      font-size: 0.72rem;
-      font-weight: 800;
-      letter-spacing: 1px;
-      cursor: pointer;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      gap: 8px;
-      transition: all 0.2s ease;
-    }
-    .ota-pick-btn:active {
-      background: rgba(0, 240, 255, 0.2);
-    }
-    .ota-file-name {
-      font-size: 0.72rem;
-      color: var(--text-muted);
-      text-align: center;
-      word-break: break-all;
-      padding: 2px 6px;
-    }
-    .ota-flash-btn {
-      width: 100%;
-      background: linear-gradient(135deg, #00ff88 0%, #00aa55 100%);
-      border: none;
-      color: #07090e;
-      padding: 12px 14px;
-      border-radius: 10px;
-      font-family: 'Orbitron', sans-serif;
-      font-size: 0.8rem;
-      font-weight: 900;
-      letter-spacing: 1.2px;
-      cursor: pointer;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      gap: 8px;
-      box-shadow: 0 0 16px rgba(0, 255, 136, 0.4);
-      transition: all 0.2s ease;
-    }
-    .ota-flash-btn:active {
-      transform: scale(0.98);
-      filter: brightness(1.2);
-    }
-    .ota-progress-box {
-      width: 100%;
-      background: rgba(0,0,0,0.6);
-      border: 1px solid var(--panel-border);
-      border-radius: 8px;
-      overflow: hidden;
-      position: relative;
-      height: 24px;
-      display: none;
-      margin-top: 4px;
-    }
-    .ota-progress-fill {
-      height: 100%;
-      width: 0%;
-      background: linear-gradient(90deg, #00f0ff, #00ff88);
-      transition: width 0.15s linear;
-    }
-    .ota-progress-lbl {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      font-family: 'Orbitron', sans-serif;
-      font-size: 0.7rem;
-      font-weight: 800;
-      color: #fff;
-      text-shadow: 0 1px 3px rgba(0,0,0,0.8);
-    }
-
-    /* Toast notification */
-    .toast {
-      position: fixed;
-      bottom: 24px;
-      background: rgba(10, 15, 25, 0.95);
-      border: 1px solid var(--neon-green);
-      color: var(--neon-green);
-      font-family: 'Orbitron', sans-serif;
-      font-size: 0.8rem;
-      font-weight: 700;
-      letter-spacing: 1px;
-      padding: 12px 24px;
-      border-radius: 30px;
-      box-shadow: 0 10px 30px rgba(0, 255, 136, 0.3);
-      opacity: 0;
-      transform: translateY(20px);
-      transition: all 0.3s ease;
-      pointer-events: none;
-      z-index: 999;
-    }
-
-    .toast.show {
-      opacity: 1;
-      transform: translateY(0);
-    }
-
-    /* Help / Info Modal */
-    .modal-backdrop {
-      position: fixed;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(4, 7, 12, 0.88);
-      backdrop-filter: blur(14px);
-      -webkit-backdrop-filter: blur(14px);
-      z-index: 2000;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      padding: 16px;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.25s ease;
-    }
-
-    .modal-backdrop.open {
-      opacity: 1;
-      pointer-events: auto;
-    }
-
-    .modal-card {
-      background: rgba(14, 20, 32, 0.98);
-      border: 1px solid rgba(0, 240, 255, 0.35);
-      border-radius: 24px;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.85), 0 0 35px rgba(0, 240, 255, 0.15);
-      width: 100%;
-      max-width: 440px;
-      max-height: 88vh;
-      display: flex;
-      flex-direction: column;
-      transform: translateY(20px) scale(0.96);
-      transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-      overflow: hidden;
-    }
-
-    .modal-backdrop.open .modal-card {
-      transform: translateY(0) scale(1);
-    }
-
-    .modal-header {
-      padding: 16px 18px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      border-bottom: 1px solid var(--panel-border);
-      background: rgba(20, 28, 44, 0.7);
-    }
-
-    .modal-title {
-      font-family: 'Orbitron', sans-serif;
-      font-size: 1rem;
-      font-weight: 900;
-      letter-spacing: 1px;
-      color: #fff;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .modal-close-btn {
-      background: rgba(255, 255, 255, 0.08);
-      border: 1px solid var(--panel-border);
-      color: var(--text-muted);
-      width: 32px;
-      height: 32px;
-      border-radius: 50%;
-      cursor: pointer;
-      font-size: 1.1rem;
-      font-weight: bold;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: all 0.15s ease;
-      -webkit-tap-highlight-color: transparent;
-    }
-
-    .modal-close-btn:hover, .modal-close-btn:active {
-      background: var(--neon-red);
-      color: #fff;
-      border-color: var(--neon-red);
-      box-shadow: 0 0 12px var(--neon-red-glow);
-    }
-
-    .modal-body {
-      padding: 16px 16px 20px;
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      font-size: 0.85rem;
-      line-height: 1.4;
-      color: var(--text-main);
-    }
-
-    .modal-section {
-      background: rgba(8, 12, 20, 0.7);
-      border: 1px solid rgba(255, 255, 255, 0.06);
-      border-radius: 14px;
-      padding: 12px 14px;
-    }
-
-    .modal-section-title {
-      font-family: 'Orbitron', sans-serif;
-      font-size: 0.82rem;
-      font-weight: 800;
-      letter-spacing: 0.8px;
-      color: var(--neon-cyan);
-      margin-bottom: 6px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-
-    .modal-section p {
-      margin-bottom: 6px;
-      color: #c4d1e2;
-    }
-
-    .modal-section p:last-child {
-      margin-bottom: 0;
-    }
-
-    .modal-highlight {
-      color: var(--neon-amber);
-      font-weight: 700;
-    }
-
-    .modal-footer {
-      padding: 12px 16px;
-      border-top: 1px solid var(--panel-border);
-      background: rgba(20, 28, 44, 0.5);
-    }
-
-    .modal-ack-btn {
-      width: 100%;
-      padding: 12px;
-      background: linear-gradient(135deg, #00f0ff 0%, #0088cc 100%);
-      border: none;
-      border-radius: 12px;
-      color: #07090e;
-      font-family: 'Orbitron', sans-serif;
-      font-size: 0.85rem;
-      font-weight: 900;
-      letter-spacing: 1px;
-      cursor: pointer;
-      box-shadow: 0 4px 15px rgba(0, 240, 255, 0.35);
-      transition: all 0.15s ease;
-      -webkit-tap-highlight-color: transparent;
-    }
-
-    .modal-ack-btn:active {
-      transform: scale(0.98);
-      filter: brightness(1.2);
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#07090e">
+<title>Suzuki Swift 1.3 8V - Show Tuning Vezérlő</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #07090e; --panel: rgba(16,22,34,.92); --inset: rgba(8,12,20,.75); --line: rgba(255,255,255,.08);
+    --cyan: #00f0ff; --amber: #ffaa00; --red: #ff2247; --red-glow: rgba(255,34,71,.5); --green: #00ff88;
+    --text: #f0f4fc; --muted: #8391aa;
+    --disp: 'Orbitron', 'Segoe UI', Roboto, Arial, sans-serif;
+    --body: 'Rajdhani', 'Roboto Condensed', 'Arial Narrow', sans-serif-condensed, system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  [hidden] { display: none !important; }
+  body {
+    background: var(--bg) radial-gradient(circle at 50% 0%, #151d2c 0%, #07090e 70%) no-repeat;
+    color: var(--text); font: 600 16px/1.3 var(--body); min-height: 100vh; overflow-x: hidden;
+    padding: 10px 12px calc(28px + env(safe-area-inset-bottom)); user-select: none; -webkit-user-select: none; -webkit-text-size-adjust: 100%;
+  }
+  input { user-select: text; -webkit-user-select: text; }
+  button { font: inherit; color: inherit; cursor: pointer; touch-action: manipulation; }
+  :focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+  .wrap { max-width: 440px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 20px; box-shadow: 0 12px 32px rgba(0,0,0,.5); }
+  @keyframes blink { from { opacity: .25; } to { opacity: 1; } }
+  @keyframes flash { from { transform: scale(.97); opacity: .85; } to { transform: scale(1.03); opacity: 1; } }
+  @keyframes pulseAmber { 0%, 100% { box-shadow: 0 0 18px rgba(255,170,0,.4); } 50% { box-shadow: 0 0 36px rgba(255,170,0,.85); } }
+
+  /* Top bar */
+  .topbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 10px 9px 14px; border-radius: 16px; }
+  .brand { flex: 1; min-width: 0; }
+  .brand-title { font: 900 .95rem var(--disp); letter-spacing: 1.5px; display: flex; align-items: center; gap: 6px; }
+  .badge { background: linear-gradient(135deg, #ff2247, #aa0720); font-size: .6rem; padding: 2px 7px; border-radius: 4px; letter-spacing: .5px; }
+  .brand-sub { font-size: .7rem; color: var(--muted); font-weight: 700; letter-spacing: 1.2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .fw-chip { color: var(--cyan); }
+  .top-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .pill { display: flex; align-items: center; gap: 6px; font: 800 .6rem var(--disp); letter-spacing: .8px; padding: 6px 11px; border-radius: 20px; background: rgba(0,0,0,.5); border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+  .pill.up { color: var(--green); border-color: rgba(0,255,136,.4); background: rgba(0,255,136,.1); }
+  .pill.down { color: var(--amber); border-color: rgba(255,170,0,.4); }
+  .pill.down .dot, .pill.connecting .dot { animation: blink .8s infinite alternate; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 6px currentColor; }
+  .icon-btn { width: 40px; height: 40px; border-radius: 50%; background: rgba(0,240,255,.12); border: 1px solid rgba(0,240,255,.45); color: var(--cyan); font: 900 1rem var(--disp); }
+  .icon-btn:active { background: var(--cyan); color: var(--bg); }
+  .demo-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px 8px 14px; border-radius: 14px; border: 1px dashed rgba(255,170,0,.55); background: rgba(255,170,0,.08); font-size: .8rem; color: #ffd98a; }
+  .demo-bar .btn { width: auto; flex-shrink: 0; touch-action: none; }
+
+  /* RPM readout: cut-reason line, big number, slim bar with zones and markers */
+  .cluster { padding: 12px 14px 12px; display: flex; flex-direction: column; gap: 10px; }
+  .cluster.cutting { border-color: rgba(255,34,71,.6); box-shadow: 0 0 28px rgba(255,34,71,.3); }
+  .cut-line { font: 900 .78rem var(--disp); letter-spacing: 1.5px; text-align: center; padding: 8px 10px; border-radius: 12px; border: 1px solid var(--line); background: rgba(0,0,0,.35); color: var(--muted); white-space: nowrap; }
+  .cut-line.on { background: rgba(255,34,71,.25); border-color: var(--red); color: #fff; box-shadow: 0 0 16px var(--red-glow); }
+  .cut-line.lock { background: rgba(255,170,0,.18); border-color: var(--amber); color: #ffe2a8; }
+  .readout { display: flex; justify-content: space-between; align-items: flex-end; gap: 8px; }
+  .rpm { font: 700 4.2rem/.85 var(--body); letter-spacing: -1px; font-variant-numeric: tabular-nums; text-shadow: 0 0 14px rgba(0,240,255,.45); }
+  .rpm.warn { color: var(--amber); text-shadow: 0 0 18px rgba(255,170,0,.6); }
+  .rpm.danger { color: var(--red); text-shadow: 0 0 22px rgba(255,34,71,.8); }
+  .rpm-wrap { display: flex; align-items: baseline; gap: 6px; }
+  .unit { font: 700 .7rem var(--disp); letter-spacing: 1.5px; color: var(--muted); }
+  .legend { display: flex; justify-content: space-between; font: 700 .62rem var(--disp); letter-spacing: 1px; color: var(--muted); }
+  .legend span::before { content: ''; display: inline-block; width: 3px; height: 10px; margin-right: 6px; vertical-align: -1px; background: var(--amber); }
+  .legend b { color: var(--amber); }
+  .legend span + span::before { background: var(--red); }
+  .legend span + span b { color: var(--red); }
+  .digital-r { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+  .peak { font: 800 .68rem var(--disp); letter-spacing: 1px; color: var(--amber); background: rgba(255,170,0,.12); border: 1px solid rgba(255,170,0,.3); border-radius: 8px; padding: 8px 10px; white-space: nowrap; }
+  .pat-mini { font-size: .76rem; font-weight: 700; color: var(--muted); letter-spacing: 1px; }
+  .rbar { position: relative; margin-top: 4px; }
+  .rtrack { position: relative; height: 12px; border-radius: 6px; overflow: hidden; background: #101622; border: 1px solid rgba(255,255,255,.06); }
+  .rtrack i { position: absolute; top: 0; bottom: 0; }
+  #zoneWarn { background: rgba(255,170,0,.2); }
+  #zoneRed { right: 0; background: rgba(255,34,71,.38); }
+  .rpm-fill { left: 0; width: 100%; background: linear-gradient(90deg, #0088cc, var(--cyan)); transform-origin: left; transform: scaleX(0); transition: transform .05s linear; }
+  .rpm-fill.warn { background: var(--amber); }
+  .rpm-fill.danger, .cutting .rpm-fill { background: var(--red); }
+  .mk { position: absolute; top: -5px; bottom: -5px; width: 3px; margin-left: -1.5px; border-radius: 2px; background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+  .mk.r { background: var(--red); box-shadow: 0 0 6px var(--red); }
+  .scale { display: flex; justify-content: space-between; font: 700 .6rem var(--disp); color: var(--muted); margin-top: 4px; }
+  .scale span { width: 0; display: flex; justify-content: center; }
+
+  /* Launch / show control */
+  .launch { padding: 12px; }
+  .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+  .seg button { padding: 8px 6px; min-height: 48px; border-radius: 12px; background: rgba(14,20,32,.9); border: 1px solid var(--line); color: var(--muted); display: flex; flex-direction: column; align-items: center; }
+  .seg b { font: 800 .66rem var(--disp); letter-spacing: .5px; }
+  .seg small { font-size: .72rem; }
+  .seg button.active { background: rgba(0,240,255,.14); border-color: var(--cyan); color: var(--cyan); box-shadow: 0 0 14px rgba(0,240,255,.25); }
+  .fire-btn { width: 100%; min-height: 104px; padding: 12px 10px 16px; border-radius: 20px; border: 2px solid var(--red); background: linear-gradient(180deg, #2a0b12, #130407); display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 6px; position: relative; overflow: hidden; box-shadow: 0 8px 28px rgba(255,34,71,.3), inset 0 1px 0 rgba(255,255,255,.15); transition: transform .05s, background .1s; -webkit-touch-callout: none; }
+  .fire-btn.show { touch-action: none; }
+  .fire-btn::before { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(45deg, rgba(255,255,255,.02) 0 8px, transparent 8px 16px); pointer-events: none; }
+  .fire-title { font: 900 1.15rem var(--disp); letter-spacing: 1.2px; text-align: center; text-shadow: 0 0 12px var(--red-glow); }
+  .fire-sub { font-size: .8rem; font-weight: 700; letter-spacing: 1px; color: var(--red); text-align: center; }
+  .fire-cd { position: absolute; left: 0; right: 0; bottom: 0; height: 7px; background: rgba(0,0,0,.45); opacity: 0; }
+  .fire-cd i { display: block; height: 100%; background: linear-gradient(90deg, #ff8800, var(--amber)); transform-origin: left; transition: transform .1s linear; }
+  .fire-btn.pressed { background: var(--red); transform: translateY(3px) scale(.985); box-shadow: 0 0 45px rgba(255,34,71,.95); }
+  .fire-btn.pressed .fire-sub, .fire-btn.holding .fire-sub { color: #fff; }
+  .fire-btn.armed { background: linear-gradient(180deg, #332505, #171102); border-color: var(--amber); animation: pulseAmber 1.2s infinite ease-in-out; }
+  .fire-btn.armed .fire-sub { color: var(--amber); }
+  .fire-btn.armed .fire-cd { opacity: 1; }
+  .fire-btn.holding { background: var(--red); border-color: #fff; box-shadow: 0 0 50px rgba(255,34,71,.95); animation: flash .12s infinite alternate; }
+  .fire-btn.fired { background: linear-gradient(180deg, #053315, #02170a); border-color: var(--green); box-shadow: 0 0 35px rgba(0,255,136,.7); }
+  .fire-btn.fired .fire-sub { color: var(--green); }
+  .fire-btn.offline { border-color: #3a4560; background: #10151f; box-shadow: none; }
+  .fire-btn.offline .fire-title, .fire-btn.offline .fire-sub { text-shadow: none; color: var(--muted); }
+  .ls-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 10px; }
+  .ls-steps span { font: 800 .58rem var(--disp); letter-spacing: .8px; text-align: center; padding: 6px 0; border-radius: 8px; border: 1px solid var(--line); color: #56627a; background: rgba(0,0,0,.35); }
+  .ls-steps span.on { color: var(--c, #fff); border-color: var(--c, #6b7a96); }
+  .ls-steps span.on[data-s="2"] { background: var(--red); color: #fff; }
+  .warn-line { font-size: .85rem; color: #ffd98a; background: rgba(255,170,0,.1); border: 1px solid rgba(255,170,0,.35); border-radius: 10px; padding: 8px 10px; }
+  .launch .warn-line { margin-top: 10px; }
+
+  /* Collapsible setting cards */
+  .settings { display: flex; flex-direction: column; gap: 12px; }
+  .settings.loading details { opacity: .5; pointer-events: none; }
+  summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+  summary::-webkit-details-marker { display: none; }
+  details.card > summary { gap: 10px; min-height: 56px; padding: 10px 16px; }
+  .ico { font-size: 1.15rem; width: 26px; text-align: center; }
+  .st { flex: 1; font: 800 .78rem var(--disp); letter-spacing: 1px; }
+  .sv { font-weight: 700; color: var(--amber); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .sv.off { color: var(--muted); }
+  .sv.bad { color: var(--red); }
+  .chev { width: 9px; height: 9px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(45deg); margin: 0 3px 4px 4px; transition: transform .2s; }
+  details[open] > summary .chev { transform: rotate(-135deg); margin-bottom: -4px; }
+  .cb { padding: 2px 16px 16px; display: flex; flex-direction: column; gap: 16px; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .lbl { display: flex; flex-direction: column; min-width: 0; }
+  .lbl b { font-size: 1.05rem; font-weight: 700; }
+  .lbl small, .hint { font-size: .8rem; color: var(--muted); line-height: 1.3; }
+  .hint.center { text-align: center; }
+  .hint.good { color: var(--green); }
+  .hint.bad { color: #ff8095; }
+  .val { font: 700 1.1rem var(--body); padding: 3px 10px; border-radius: 8px; background: rgba(0,0,0,.55); border: 1px solid var(--line); color: var(--amber); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .val.danger { color: var(--red); }
+  .sl { display: flex; flex-direction: column; gap: 8px; }
+  .sl.off { opacity: .45; }
+  .sl-row { display: flex; align-items: center; gap: 8px; }
+  .step { width: 44px; height: 44px; flex-shrink: 0; border-radius: 12px; background: rgba(255,255,255,.07); border: 1px solid var(--line); font: 700 1.4rem/1 var(--body); }
+  .step:active { background: var(--cyan); color: #000; }
+  input[type=range] { -webkit-appearance: none; appearance: none; flex: 1; min-width: 0; height: 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,.06); background: linear-gradient(90deg, rgba(255,34,71,.75) var(--p, 50%), #141b2a var(--p, 50%)); }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg, #ff416c, #ff2247); border: 2px solid #fff; box-shadow: 0 0 14px rgba(255,34,71,.7); }
+  input[type=range]::-moz-range-thumb { width: 24px; height: 24px; border-radius: 50%; background: #ff2247; border: 2px solid #fff; }
+  .sw { position: relative; width: 58px; height: 32px; flex-shrink: 0; }
+  .sw input { position: absolute; opacity: 0; width: 100%; height: 100%; cursor: pointer; z-index: 1; }
+  .sw span { position: absolute; inset: 0; background: #1a2233; border: 1px solid var(--line); border-radius: 32px; transition: .2s; pointer-events: none; }
+  .sw span::before { content: ''; position: absolute; width: 24px; height: 24px; left: 3px; top: 3px; border-radius: 50%; background: #8899af; transition: .2s; }
+  .sw input:checked + span { background: var(--red); border-color: var(--red); box-shadow: 0 0 14px var(--red-glow); }
+  .sw input:checked + span::before { transform: translateX(26px); background: #fff; }
+  .sw input:focus-visible + span { outline: 2px solid var(--cyan); outline-offset: 2px; }
+  .pats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .pat { background: rgba(14,18,28,.85); border: 1px solid var(--line); border-radius: 12px; padding: 10px 8px; display: flex; flex-direction: column; align-items: center; gap: 3px; text-align: center; }
+  .pat:last-child { grid-column: span 2; }
+  .pat b { font: 800 .68rem var(--disp); letter-spacing: .5px; }
+  .pat small { font-size: .74rem; color: var(--muted); line-height: 1.15; }
+  .pat.active { background: linear-gradient(180deg, #2b1016, #19090d); border-color: var(--red); box-shadow: 0 0 16px rgba(255,34,71,.35); }
+  .seq { display: flex; gap: 3px; margin-top: 4px; }
+  .seq i { width: 7px; height: 10px; border-radius: 2px; background: var(--red); }
+  .seq i.f { background: var(--green); }
+  .seq i.L { width: 60px; }
+  .save-btn { padding: 12px 14px; min-height: 56px; border-radius: 14px; border: 1px solid rgba(255,255,255,.1); background: linear-gradient(180deg, #1c2538, #131926); display: flex; flex-direction: column; align-items: center; gap: 2px; box-shadow: 0 4px 15px rgba(0,0,0,.4); }
+  .save-btn b { font: 800 .85rem var(--disp); letter-spacing: 1.2px; }
+  .save-btn small { font-size: .78rem; color: var(--muted); }
+  .save-btn.dirty, .save-btn.saving { position: sticky; bottom: calc(10px + env(safe-area-inset-bottom)); z-index: 20; }
+  .save-btn.dirty { background: linear-gradient(180deg, #3a2a06, #211703); border-color: var(--amber); animation: pulseAmber 1.6s infinite ease-in-out; }
+  .save-btn.dirty b { color: var(--amber); }
+  .save-btn.dirty small { color: #ffd98a; }
+  .save-btn.saving { opacity: .85; border-color: var(--cyan); }
+
+  /* Buttons, forms, firmware update */
+  .btn { width: 100%; min-height: 46px; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(0,240,255,.5); background: rgba(0,240,255,.08); color: var(--cyan); font: 800 .72rem var(--disp); letter-spacing: 1px; }
+  .btn:active { background: rgba(0,240,255,.25); }
+  .btn:disabled { opacity: .4; }
+  .btn.go { background: linear-gradient(135deg, #00ff88, #00aa55); border: none; color: var(--bg); font-weight: 900; box-shadow: 0 0 16px rgba(0,255,136,.35); }
+  .btn.warn { border-color: rgba(255,170,0,.45); color: var(--amber); background: rgba(255,170,0,.08); }
+  .btn.ghost { border-color: var(--line); color: var(--muted); background: none; }
+  .btn.dashed { border-style: dashed; }
+  .btn.sm { min-height: 40px; font-size: .64rem; padding: 8px 10px; }
+  .btn-row { display: flex; gap: 8px; }
+  .fw-cur { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .fw-cur b { font: 800 .9rem var(--disp); color: var(--cyan); }
+  .box { background: var(--inset); border: 1px solid var(--line); border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+  .box-h { font: 800 .74rem var(--disp); letter-spacing: .8px; flex: 1; }
+  .tag { font: 800 .55rem var(--disp); letter-spacing: 1px; color: var(--bg); background: var(--green); border-radius: 4px; padding: 2px 5px; }
+  details.box > summary { min-height: 30px; }
+  .sub > summary { font-size: .85rem; color: var(--muted); min-height: 36px; }
+  .sub > summary::before { content: '▸'; transition: transform .2s; }
+  .sub[open] > summary::before { transform: rotate(90deg); }
+  .sub-b { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+  .fld { display: flex; flex-direction: column; gap: 4px; font-size: .82rem; color: var(--muted); }
+  .fld input { font: 600 1rem var(--body); color: var(--text); background: #0b111c; border: 1px solid #253046; border-radius: 10px; padding: 10px 12px; min-height: 44px; width: 100%; }
+  .fld input:focus { outline: none; border-color: var(--cyan); }
+  .ota-st { border-radius: 10px; padding: 9px 11px; font-size: .88rem; line-height: 1.35; background: rgba(0,240,255,.06); border: 1px solid rgba(0,240,255,.25); color: #cfe9f5; display: flex; flex-direction: column; gap: 7px; word-break: break-word; }
+  .ota-st.ok { background: rgba(0,255,136,.07); border-color: rgba(0,255,136,.4); color: #b8ffd9; }
+  .ota-st.go { background: rgba(0,255,136,.1); border-color: var(--green); color: #fff; }
+  .ota-st.warn { background: rgba(255,170,0,.08); border-color: rgba(255,170,0,.45); color: #ffe0a0; }
+  .ota-st.err { background: rgba(255,34,71,.08); border-color: rgba(255,34,71,.5); color: #ffc2cd; }
+  .bar { display: none; height: 8px; border-radius: 5px; background: rgba(0,0,0,.6); overflow: hidden; }
+  .ota-st.prog .bar { display: block; }
+  .bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #00f0ff, #00ff88); transition: width .2s linear; }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: .92rem; }
+  .kv dt { color: var(--muted); }
+  .kv dd { text-align: right; font-variant-numeric: tabular-nums; word-break: break-all; }
+  .toast { position: fixed; left: 50%; top: calc(12px + env(safe-area-inset-top)); transform: translate(-50%, -20px); width: max-content; max-width: calc(100% - 24px); text-align: center; background: rgba(10,15,25,.97); border: 1px solid var(--green); color: var(--green); font: 700 .74rem/1.35 var(--disp); letter-spacing: .6px; padding: 11px 18px; border-radius: 22px; box-shadow: 0 10px 30px rgba(0,0,0,.6); opacity: 0; transition: .25s; pointer-events: none; z-index: 3000; }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+  .toast.warn { border-color: var(--amber); color: var(--amber); }
+  .toast.err { border-color: var(--red); color: #ffc2cd; }
+
+  /* Help modal */
+  .modal { position: fixed; inset: 0; background: rgba(4,7,12,.9); z-index: 2000; display: flex; justify-content: center; align-items: center; padding: 12px; opacity: 0; pointer-events: none; transition: opacity .2s; }
+  .modal.open { opacity: 1; pointer-events: auto; }
+  .modal-card { background: #0e1420; border: 1px solid rgba(0,240,255,.35); border-radius: 22px; width: 100%; max-width: 440px; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,.85); }
+  .modal-head { display: flex; justify-content: space-between; align-items: center; padding: 12px 12px 12px 18px; border-bottom: 1px solid var(--line); font: 900 .95rem var(--disp); letter-spacing: 1px; }
+  .modal-body { padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; font-size: .92rem; line-height: 1.4; user-select: text; -webkit-user-select: text; }
+  .msec { background: var(--inset); border: 1px solid rgba(255,255,255,.06); border-radius: 14px; padding: 12px 14px; }
+  .msec h3 { font: 800 .78rem var(--disp); letter-spacing: .8px; color: var(--cyan); margin-bottom: 6px; }
+  .msec p { color: #c4d1e2; margin-bottom: 6px; }
+  .msec p:last-child { margin-bottom: 0; }
+  .msec b { color: var(--amber); }
+  .modal-foot { padding: 12px 14px; border-top: 1px solid var(--line); }
+  .modal-foot .btn { background: linear-gradient(135deg, #00f0ff, #0088cc); color: var(--bg); border: none; font-weight: 900; }
+  @media (prefers-reduced-motion: reduce) { *, *::before { animation: none !important; transition: none !important; } }
+</style>
 </head>
 <body>
+<div class="wrap">
 
-  <!-- Top Cockpit Bar -->
-  <div class="header-bar">
-    <div class="brand-wrap">
-      <div class="brand-title">
-        SWIFT <span class="brand-badge">G13BA</span>
-      </div>
-      <div class="brand-sub">1.3L 8V SHOW VEZÉRLŐ</div>
+  <!-- Top bar: brand, firmware version, connection -->
+  <header class="card topbar">
+    <div class="brand">
+      <div class="brand-title">SWIFT <span class="badge">G13BA</span></div>
+      <div class="brand-sub"><span id="fwChip" class="fw-chip" hidden></span>1.3L 8V SHOW VEZÉRLŐ</div>
     </div>
-    <div class="header-actions">
-      <button id="infoBtn" class="info-btn" onclick="openModal()" title="Funkciók és útmutató">ℹ</button>
-      <div id="statusBadge" class="status-pill">
-        <div class="status-dot"></div>
-        <span id="statusText">CSATLAKOZÁS...</span>
-      </div>
+    <div class="top-actions">
+      <div id="statusPill" class="pill connecting"><i class="dot"></i><span id="statusText">KERESÉS…</span></div>
+      <button class="icon-btn" onclick="openModal()" aria-label="Súgó és funkcióleírások">ℹ</button>
     </div>
+  </header>
+
+  <div id="demoBar" class="demo-bar" hidden>
+    <span><b>DEMÓ MÓD</b> – szimulált motor, nincs kapcsolat az autóval.</span>
+    <button id="demoGas" class="btn sm">🦶 GÁZ (TARTSD)</button>
   </div>
 
-  <!-- Motorsport Tachometer Cluster -->
-  <div class="cluster-card">
-    <div class="gauge-wrapper">
-      <div id="sparkAlert" class="spark-alert-banner">⚡ GYÚJTÁSELVÉTEL AKTÍV ⚡</div>
-
-      <svg class="tach-svg" viewBox="0 0 320 240">
-        <defs>
-          <!-- Neon Glow Filter -->
-          <filter id="needleGlow" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
-          <filter id="arcGlow" x="-20%" y="-20%" width="140%" height="140%">
-            <feGaussianBlur stdDeviation="3.5" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
-          <!-- Arc Gradient Definition -->
-          <linearGradient id="arcGradient" x1="0%" y1="100%" x2="100%" y2="0%">
-            <stop offset="0%" stop-color="#00f0ff" />
-            <stop offset="55%" stop-color="#ffaa00" />
-            <stop offset="85%" stop-color="#ff2247" />
-          </linearGradient>
-        </defs>
-
-        <!-- Outer Bezel Rings (Center 160, 128, R=106) -->
-        <circle cx="160" cy="128" r="124" fill="none" stroke="#121824" stroke-width="2" />
-        <circle cx="160" cy="128" r="118" fill="none" stroke="#1c2538" stroke-width="1.5" stroke-dasharray="3 3" />
-
-        <!-- Background Track (260 deg sweep from 140 to 400 deg, R=105) -->
-        <path id="trackBg" d="M 79.5 195.5 A 105 105 0 1 1 240.5 195.5" fill="none" stroke="#101622" stroke-width="12" stroke-linecap="round" />
-
-        <!-- Redline Danger Zone Arc (6200 to 8000 RPM) -->
-        <path d="M 220.2 67.8 A 105 105 0 0 1 240.5 195.5" fill="none" stroke="rgba(255, 34, 71, 0.35)" stroke-width="12" stroke-linecap="round" />
-
-        <!-- Active Illuminated Arc -->
-        <path id="activeArc" d="M 79.5 195.5 A 105 105 0 1 1 240.5 195.5" fill="none" stroke="url(#arcGradient)" stroke-width="12" stroke-linecap="round" filter="url(#arcGlow)" stroke-dasharray="0 476" />
-
-        <!-- Dynamic Marker: 2-Step Launch Limit -->
-        <line id="launchMarker" x1="160" y1="23" x2="160" y2="10" stroke="#ffaa00" stroke-width="3" stroke-linecap="round" filter="url(#needleGlow)" />
-
-        <!-- Dynamic Marker: Redline Limit -->
-        <line id="redlineMarker" x1="160" y1="23" x2="160" y2="10" stroke="#ff2247" stroke-width="3" stroke-linecap="round" filter="url(#needleGlow)" />
-
-        <!-- Tick marks & numbers container (generated by JS) -->
-        <g id="ticksGroup"></g>
-
-        <!-- Needle Group: Drawn along positive X-axis (0 deg) from (160, 128) to (248, 128) -->
-        <g id="needleGroup" style="transition: transform 0.05s linear; transform-origin: 160px 128px; transform: rotate(140deg);">
-          <!-- Needle trail glow -->
-          <line x1="160" y1="128" x2="246" y2="128" stroke="rgba(255, 34, 71, 0.45)" stroke-width="5" stroke-linecap="round" filter="url(#needleGlow)" />
-          <!-- Sharp illuminated racing needle -->
-          <polygon points="160,125 248,127.3 251,128 248,128.7 160,131" fill="#ff2247" filter="url(#needleGlow)" />
-          <line x1="160" y1="128" x2="247" y2="128" stroke="#fff" stroke-width="1.5" stroke-linecap="round" />
-        </g>
-
-        <!-- Billet Center Cap Hub -->
-        <circle cx="160" cy="128" r="16" fill="#0d111a" stroke="#253046" stroke-width="2.5" />
-        <circle cx="160" cy="128" r="10" fill="#141a27" stroke="#374563" stroke-width="1.5" />
-        <circle cx="160" cy="128" r="4" fill="#ff2247" />
-        <circle cx="160" cy="128" r="1.5" fill="#fff" />
-      </svg>
-    </div>
-
-    <!-- Dedicated Cockpit Digital Display Bar Directly Below Dial -->
-    <div class="cluster-digital-bar">
-      <div class="digital-left">
-        <div id="rpmNum" class="digital-rpm">0</div>
-        <div class="unit-tag">FORDULATSZÁM &bull; G13BA 8V</div>
-      </div>
-      <div class="digital-right">
-        <div id="peakBadge" class="peak-tag" onclick="resetPeak()" title="Kattints a nullázáshoz">CSÚCS 0</div>
-        <div class="mode-badge-mini" id="patternDisplay">KEMÉNY TILTÁS</div>
+  <!-- RPM readout: what is cutting, big number, bar (zones follow the configured redline) -->
+  <section id="cluster" class="card cluster">
+    <div id="cutLine" class="cut-line">NINCS ADAT</div>
+    <div class="readout">
+      <div class="rpm-wrap"><span id="rpmNum" class="rpm">0</span><span class="unit">RPM</span></div>
+      <div class="digital-r">
+        <button id="peak" class="peak" onclick="resetPeak()" aria-label="Csúcsérték nullázása">CSÚCS 0</button>
+        <div id="patMini" class="pat-mini"></div>
       </div>
     </div>
-  </div>
-
-  <!-- Big Tactical Launch Control / 2-Step Button -->
-  <div class="button-section">
-    <div class="launch-mode-selector">
-      <button type="button" id="modeHandsFree" class="mode-pill active" onclick="setLaunchMode('handsfree')">
-        ⚡ HANDS-FREE RAJT
-      </button>
-      <button type="button" id="modeShow" class="mode-pill" onclick="setLaunchMode('show')">
-        🔥 SHOW MÓD (NYOMVATARTÁS)
-      </button>
+    <div class="rbar" aria-hidden="true">
+      <div class="rtrack"><i id="zoneWarn"></i><i id="zoneRed"></i><i id="rpmFill" class="rpm-fill"></i></div>
+      <i id="mkLaunch" class="mk"></i><i id="mkRed" class="mk r"></i>
     </div>
+    <div class="scale" aria-hidden="true"><span>0</span><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span></div>
+    <div class="legend"><span>RAJT <b id="lgLaunch"></b></span><span>LIMIT <b id="lgRed"></b></span></div>
+  </section>
 
-    <button id="btnTwoStep" class="fire-btn" type="button">
-      <div id="fireBtnTitle" class="fire-btn-title">
-        🏁 RAJTAUTOMATIKA ÉLESÍTÉSE 🏁
-      </div>
-      <div id="fireBtnSub" class="fire-btn-sub">KOPPINTS AZ ÉLESÍTÉSHEZ • 10 MP KÉSZENLÉT</div>
+  <!-- Launch control / show 2-step -->
+  <section class="card launch">
+    <div class="seg" role="group" aria-label="Rajt mód">
+      <button id="modeHandsFree" onclick="setLaunchMode('handsfree')"><b>⚡ HANDS-FREE RAJT</b><small>egy koppintás</small></button>
+      <button id="modeShow" onclick="setLaunchMode('show')"><b>🔥 SHOW MÓD</b><small>nyomva tartás</small></button>
+    </div>
+    <button id="btnTwoStep" class="fire-btn">
+      <span id="fireTitle" class="fire-title"></span>
+      <span id="fireSub" class="fire-sub"></span>
+      <span class="fire-cd"><i id="cdFill"></i></span>
     </button>
+    <div id="lsSteps" class="ls-steps"><span data-s="0">OFF</span><span data-s="1" style="--c:#ffaa00">ARMED</span><span data-s="2" style="--c:#ff2247">HOLDING</span><span data-s="3" style="--c:#00ff88">FIRED</span></div>
+    <div id="armWarn" class="warn-line" hidden>⚠ A rendszer ki van kapcsolva, a vezérlő most nem vesz el szikrát. Bekapcsolás: Biztonság kártya.</div>
+  </section>
+
+  <!-- Settings (slider blocks are built from SLIDERS in the script) -->
+  <div id="settings" class="settings loading">
+    <details class="card" id="grpLaunch" open>
+      <summary><span class="ico">🏁</span><span class="st">RAJT / LAUNCH</span><span id="sumLaunch" class="sv"></span><i class="chev"></i></summary>
+      <div class="cb">
+        <div class="sl" data-sl="cfgLaunch"></div>
+        <div class="sl" data-sl="cfgDrop"><div id="dropHint" class="hint"></div></div>
+        <div id="launchWarn" class="warn-line" hidden>⚠ A rajt limit a redline fölött van – ott a redline tilt előbb.</div>
+      </div>
+    </details>
+
+    <details class="card" id="grpLimiter" open>
+      <summary><span class="ico">⚡</span><span class="st">LIMITER / REDLINE</span><span id="sumLimiter" class="sv"></span><i class="chev"></i></summary>
+      <div class="cb"><div class="sl" data-sl="cfgRedline"></div></div>
+    </details>
+
+    <details class="card" id="grpDecel" open>
+      <summary><span class="ico">💥</span><span class="st">DURROGÁS / OVERRUN</span><span id="sumDecel" class="sv"></span><i class="chev"></i></summary>
+      <div class="cb">
+        <div class="row"><div class="lbl"><b>Gázelvételi durrogás</b><small>Pufogás motorféken, ha hirtelen elveszed a gázt</small></div><label class="sw"><input type="checkbox" id="cfgDecelPops" checked aria-label="Gázelvételi durrogás"><span></span></label></div>
+        <div class="sl" data-sl="cfgDecel" id="decelBlock"></div>
+      </div>
+    </details>
+
+    <details class="card" id="grpSound" open>
+      <summary><span class="ico">🎯</span><span class="st">HANGZÁS / MINTÁZAT</span><span id="sumSound" class="sv"></span><i class="chev"></i></summary>
+      <div class="cb">
+        <div class="pats" id="pats">
+          <button class="pat" data-p="0" data-seq="xxxxxxxx"><b>⚡ KEMÉNY TILTÁS</b><small>Minden szikra kimarad a limit fölött (Bee*R)</small></button>
+          <button class="pat" data-p="1" data-seq="xxxoxxxo"><b>🔥 LÁNGCSÓVA</b><small>3 szikra kimarad, 1 gyújt</small></button>
+          <button class="pat" data-p="2" data-seq="xxoxxoxx"><b>💥 DURROGÁS</b><small>2 szikra kimarad, 1 gyújt</small></button>
+          <button class="pat" data-p="3" data-seq="xoxoxoxo"><b>🎯 AK-47</b><small>1 kimarad, 1 gyújt – gyors staccato</small></button>
+          <button class="pat" data-p="4" data-seq="Looo"><b>💣 ÁGYÚLÖVÉS</b><small>~1,6 s teljes tiltás, majd visszajön a szikra = nagy dörrenés</small></button>
+        </div>
+        <div class="hint center">Gyújtásonként: piros = kimaradó szikra, zöld = gyújtás</div>
+        <div class="row"><div class="lbl"><b>👻 Ghost Cam™ / V8 alapjárat</b><small>Hegyes vezértengelyes dadogás alapjáraton (650–1250 RPM)</small></div><label class="sw"><input type="checkbox" id="cfgGhostCam" aria-label="Ghost Cam"><span></span></label></div>
+      </div>
+    </details>
+
+    <details class="card" id="grpSafety" open>
+      <summary><span class="ico">🛡️</span><span class="st">BIZTONSÁG</span><span id="sumSafety" class="sv"></span><i class="chev"></i></summary>
+      <div class="cb">
+        <div class="row"><div class="lbl"><b>Rendszer élesítve (főkapcsoló)</b><small>Kikapcsolva soha nem vesz el szikrát – a gyári gyújtás 100%-ban működik</small></div><label class="sw"><input type="checkbox" id="cfgArmed" checked aria-label="Rendszer élesítve"><span></span></label></div>
+        <div class="sl" data-sl="cfgTimeout"><div class="hint">Teljesen jobbra húzva: NINCS LIMIT (∞) – csak óvatosan!</div></div>
+      </div>
+    </details>
+
+    <button id="saveBtn" class="save-btn" onclick="saveToFlash()"><b id="saveTxt"></b><small id="saveSub"></small></button>
   </div>
 
-  <!-- Settings & Tuning Console -->
-  <div class="controls-card">
-    
-    <!-- Master Arm -->
-    <div class="control-row">
-      <div class="control-label-group">
-        <div class="control-label">Rendszer engedélyezése</div>
-        <div class="control-sub">Tiltás & gyújtáselvétel főkapcsoló</div>
+  <!-- Firmware update: three paths, most convenient first -->
+  <details class="card" id="grpFw">
+    <summary><span class="ico">📡</span><span class="st">FIRMWARE FRISSÍTÉS</span><span id="sumFw" class="sv off">–</span><i class="chev"></i></summary>
+    <div class="cb">
+      <div class="fw-cur"><span>Telepített verzió: <b id="fwCur">?</b></span><small id="fwBuilt" class="hint"></small></div>
+
+      <div class="box">
+        <div class="row"><span class="box-h">📱 FRISSÍTÉS TELEFONON ÁT</span><span class="tag">AJÁNLOTT</span></div>
+        <p class="hint">A telefon letölti a legújabb firmware-t a GitHubról (mobilneten), és feltölti a vezérlőre. Androidon az autó Wi-Fi-je mellett is működik, ha be van kapcsolva a mobilnet; iPhone-on gyakran nem – ott a Wi-Fi-s módot vagy a kézi feltöltést használd.</p>
+        <div class="btn-row">
+          <button id="p1Check" class="btn" onclick="phoneCheck()">🔍 FRISSÍTÉS KERESÉSE</button>
+          <button id="p1Install" class="btn go" onclick="phoneInstall()" hidden>⬇ TELEPÍTÉS</button>
+        </div>
+        <div id="p1Status" class="ota-st" hidden><span class="ota-msg"></span><span class="bar"><i></i></span></div>
       </div>
-      <label class="switch-wrap">
-        <input type="checkbox" id="cfgArmed" onchange="sendConfig()">
-        <span class="switch-slider"></span>
-      </label>
+
+      <details class="box" id="p2Box">
+        <summary><span class="box-h">📶 FRISSÍTÉS WI-FI-N (AZ ESP TÖLTI LE)</span><i class="chev"></i></summary>
+        <div class="sub-b">
+          <p class="hint">Az ESP egy internetes Wi-Fi-re (otthoni router vagy telefonos hotspot) csatlakozik, és maga tölti le a frissítést. Közben az autó Wi-Fi-je egy pillanatra megszakadhat (csatornaváltás) – az oldal magától újracsatlakozik. Hotspotnál a telefon általában nem maradhat közben az autó Wi-Fi-jén: indítsd el a telepítést, az ESP egyedül befejezi, utána csatlakozz vissza a Swift-PopsAndBangs hálózatra, és nyisd meg újra az oldalt.</p>
+          <label class="fld"><span>Wi-Fi hálózat neve (SSID)</span><input id="staSsid" data-track autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="pl. OtthoniWifi"></label>
+          <label class="fld"><span>Wi-Fi jelszó</span><input id="staPass" type="password" autocomplete="off" placeholder="a Wi-Fi jelszava"></label>
+          <details class="sub">
+            <summary>Haladó: GitHub tároló és ág</summary>
+            <div class="sub-b">
+              <label class="fld"><span>GitHub tároló (felhasználó/név)</span><input id="espRepo" data-track autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="eng4t3/SwiftPopsAndBangs"></label>
+              <label class="fld"><span>Ág (branch)</span><input id="espBranch" data-track autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="main"></label>
+            </div>
+          </details>
+          <div class="row"><div class="lbl"><b>Automatikus ellenőrzés</b><small>Az ESP magától keres új verziót a mentett Wi-Fi-n át</small></div><label class="sw"><input type="checkbox" id="espAuto" data-track aria-label="Automatikus ellenőrzés"><span></span></label></div>
+          <button class="btn" onclick="espSaveCfg()">💾 WI-FI BEÁLLÍTÁSOK MENTÉSE</button>
+          <div class="btn-row">
+            <button id="p2Check" class="btn" onclick="espAction('check')">🔍 ELLENŐRZÉS</button>
+            <button id="p2Install" class="btn go" onclick="espAction('install')" disabled>⬇ TELEPÍTÉS</button>
+          </div>
+          <button id="p2Cancel" class="btn ghost" onclick="espAction('cancel')" hidden>✕ MEGSZAKÍTÁS</button>
+          <div id="p2Status" class="ota-st" hidden><span class="ota-msg"></span><span class="bar"><i></i></span></div>
+        </div>
+      </details>
+
+      <details class="box" id="p3Box">
+        <summary><span class="box-h">📁 KÉZI FELTÖLTÉS (.BIN)</span><i class="chev"></i></summary>
+        <div class="sub-b">
+          <p class="hint">Tartalék megoldás: ha a firmware.bin már a telefonodon van, itt kiválaszthatod és feltöltheted.</p>
+          <input type="file" id="otaFile" accept=".bin,application/octet-stream" hidden onchange="pickFile(this)">
+          <button class="btn dashed" onclick="$('otaFile').click()">📁 FIRMWARE (.BIN) KIVÁLASZTÁSA</button>
+          <div id="p3Name" class="hint center">Nincs fájl kiválasztva</div>
+          <button id="p3Install" class="btn go" onclick="fileInstall()" hidden>🚀 FELTÖLTÉS ÉS TELEPÍTÉS</button>
+          <div id="p3Status" class="ota-st" hidden><span class="ota-msg"></span><span class="bar"><i></i></span></div>
+        </div>
+      </details>
     </div>
+  </details>
 
-    <!-- Ghost Cam / V8 Lumpy Idle -->
-    <div class="control-row">
-      <div class="control-label-group">
-        <div class="control-label">🔥 Ghost Cam™ / V8 Alapjárat</div>
-        <div class="control-sub">Agresszív vezérműtengely dadogás (650-1200 RPM)</div>
+  <!-- System -->
+  <details class="card" id="grpSys">
+    <summary><span class="ico">⚙️</span><span class="st">RENDSZER</span><i class="chev"></i></summary>
+    <div class="cb">
+      <dl class="kv">
+        <dt>Firmware</dt><dd id="sysFw">–</dd>
+        <dt>Szabad memória</dt><dd id="sysHeap">–</dd>
+        <dt>Telemetria</dt><dd id="sysRate">–</dd>
+      </dl>
+      <div class="btn-row">
+        <button class="btn sm" onclick="resetPeak()">CSÚCS NULLÁZÁSA</button>
+        <button class="btn sm" onclick="openModal()">SÚGÓ</button>
       </div>
-      <label class="switch-wrap">
-        <input type="checkbox" id="cfgGhostCam" onchange="sendConfig()">
-        <span class="switch-slider"></span>
-      </label>
+      <button class="btn warn" onclick="restoreDefaults()">🔄 AJÁNLOTT ÉRTÉKEK VISSZAÁLLÍTÁSA</button>
     </div>
+  </details>
+</div>
 
-    <hr style="border: 0; border-top: 1px solid var(--panel-border);">
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-    <!-- 2-Step Launch Limit Slider -->
-    <div class="slider-block">
-      <div class="control-row">
-        <div class="control-label-group">
-          <div class="control-label">🏁 Rajtautomatika limit (2-Step)</div>
-          <div class="control-sub">Állóhelyzeti tiltás rajthoz & lángokhoz</div>
-        </div>
-        <div class="val-adjust-group">
-          <button class="step-btn" type="button" onclick="stepSlider('cfgLaunch', -50)">-</button>
-          <div id="valLaunch" class="control-val-pill">3800 RPM</div>
-          <button class="step-btn" type="button" onclick="stepSlider('cfgLaunch', 50)">+</button>
-        </div>
+<!-- Help -->
+<div id="infoModal" class="modal" aria-hidden="true">
+  <div class="modal-card" role="dialog" aria-modal="true" aria-label="Funkcióleírások">
+    <div class="modal-head"><span>ℹ FUNKCIÓLEÍRÁSOK</span><button class="icon-btn" onclick="closeModal()" aria-label="Bezárás">✕</button></div>
+    <div class="modal-body">
+      <div class="msec">
+        <h3>🏁 Hands-free rajt (launch control)</h3>
+        <p>• Koppints a gombra: indul a <b>10 mp-es készenlét (ARMED)</b>, a gomb alján visszaszámlálással.</p>
+        <p>• Kuplung be, padlógáz: a fordulat a <b>rajt limiten</b> (pl. 3800 RPM) ragad, a motor durrog és lángol <b>(HOLDING)</b>.</p>
+        <p>• Kuplung felengedésekor a terhelés lehúzza a fordulatot. Ha a <b>kuplung-felengedés érzékenység</b> értékével (pl. 600 RPM) a limit alá esik, a tiltás azonnal megszűnik: <b>RAJT! (FIRED)</b>. Kisebb érték = hamarabb old, nagyobb = biztosabb.</p>
+        <p>• Az élesítés megszűnik, ha lejár a 10 mp, ha elveszed a gázt (2000 RPM alá), ha letelik az anti-flood idő, vagy ha újra koppintasz. Gyors dupla koppintásnál a második érintés nem számít.</p>
       </div>
-      <input type="range" id="cfgLaunch" min="1500" max="6500" step="50" value="3800" oninput="updateSliders(); sendConfig()">
-    </div>
-
-    <!-- Main Redline Rev Limiter Slider -->
-    <div class="slider-block">
-      <div class="control-row">
-        <div class="control-label-group">
-          <div class="control-label">Maximális tiltás (Redline)</div>
-          <div class="control-sub">Gyújtáselvételi motorvédelmi felső határ</div>
-        </div>
-        <div class="val-adjust-group">
-          <button class="step-btn" type="button" onclick="stepSlider('cfgRedline', -50)">-</button>
-          <div id="valRedline" class="control-val-pill">6200 RPM</div>
-          <button class="step-btn" type="button" onclick="stepSlider('cfgRedline', 50)">+</button>
-        </div>
+      <div class="msec">
+        <h3>🔥 Show mód / 2-step</h3>
+        <p>Amíg nyomva tartod a gombot, a motor a rajt limiten tilt (állóhelyzeti durrogtatás, lángok); elengedve azonnal leáll.</p>
+        <p><b>Biztonság:</b> a telefon 200 ms-onként megerősíti a nyomva tartást; ha a kapcsolat megszakad vagy elhagyod az oldalt, a vezérlő 0,6 mp-en belül magától elengedi.</p>
+        <p><b>Padteszt:</b> álló motornál a gomb folyamatosan tilt (bekötés-ellenőrzés). <b>GPIO 23 kapcsoló:</b> kézifékre vagy kuplungra kötve ugyanígy 2-step.</p>
       </div>
-      <input type="range" id="cfgRedline" min="3000" max="7500" step="50" value="6200" oninput="updateSliders(); sendConfig()">
-    </div>
-
-    <!-- Decel Overrun Pops Slider & Toggle -->
-    <div class="slider-block">
-      <div class="control-row">
-        <div class="control-label-group">
-          <div class="control-label">Gázelvételi durrogás (Overrun)</div>
-          <div class="control-sub">Pufogás motorféken gázelvételkor</div>
-        </div>
-        <label class="switch-wrap">
-          <input type="checkbox" id="cfgDecelPops" onchange="sendConfig()">
-          <span class="switch-slider"></span>
-        </label>
+      <div class="msec">
+        <h3>⚡ Limiter / redline</h3>
+        <p>Felső fordulatkorlát (pl. 6200 RPM): e fölött mindig tilt, a kiválasztott mintázattal. A fordulatszám-sáv piros zónája és a kijelző színe ezt követi.</p>
       </div>
-      <div class="control-row" style="margin-top: 2px;">
-        <div class="control-sub">Bekapcsolási fordulatszám küszöb:</div>
-        <div class="val-adjust-group">
-          <button class="step-btn" type="button" onclick="stepSlider('cfgDecel', -50)">-</button>
-          <div id="valDecel" class="control-val-pill">3200 RPM</div>
-          <button class="step-btn" type="button" onclick="stepSlider('cfgDecel', 50)">+</button>
-        </div>
+      <div class="msec">
+        <h3>💥 Gázelvételi durrogás</h3>
+        <p>Ha a küszöb (pl. 3200 RPM) fölül hirtelen elveszed a gázt, motorfék közben rövid szikraelvételek jönnek, és a keverék a forró kipufogóban durran el. Gyorsításkor nem kapcsol be.</p>
       </div>
-      <input type="range" id="cfgDecel" min="1800" max="6000" step="50" value="3200" oninput="updateSliders(); sendConfig()">
-    </div>
-
-    <!-- Cut Fire Pattern Grid (4 Patterns) -->
-    <div class="slider-block">
-      <div class="control-label" style="margin-bottom: 4px;">Kipufogó hangzás & mintázat</div>
-      <div class="pattern-grid">
-        <div class="pattern-card active" id="pat0" onclick="setPattern(0)">
-          <div class="pattern-icon">⚡</div>
-          <div class="pattern-title">KEMÉNY TILTÁS</div>
-          <div class="pattern-desc">Bee*R limiter</div>
-        </div>
-        <div class="pattern-card" id="pat1" onclick="setPattern(1)">
-          <div class="pattern-icon">🔥</div>
-          <div class="pattern-title">LÁNGCSÓVA</div>
-          <div class="pattern-desc">Tűzgolyók & lángok</div>
-        </div>
-        <div class="pattern-card" id="pat2" onclick="setPattern(2)">
-          <div class="pattern-icon">💥</div>
-          <div class="pattern-title">DURROGÁS</div>
-          <div class="pattern-desc">Mély, öblös ropogás</div>
-        </div>
-        <div class="pattern-card" id="pat3" onclick="setPattern(3)">
-          <div class="pattern-icon">🎯</div>
-          <div class="pattern-title">AK-47</div>
-          <div class="pattern-desc">Gépkarabély sorozat</div>
-        </div>
-        <div class="pattern-card span-2" id="pat4" onclick="setPattern(4)">
-          <div class="pattern-icon">💣</div>
-          <div class="pattern-title">ÁGYÚLÖVÉS / BOMBA</div>
-          <div class="pattern-desc">1.6 mp szünet (benzingyűjtés) ➔ BRUTÁLIS DÚRANÁS</div>
-        </div>
+      <div class="msec">
+        <h3>🎯 Mintázatok (gyújtásonként)</h3>
+        <p>A mintázat minden tiltásnál eldönti, melyik szikra marad ki:</p>
+        <p>• <b>Kemény tiltás:</b> a limit fölött minden szikra kimarad (Bee*R limiter).</p>
+        <p>• <b>Lángcsóva:</b> 3 kimarad, 1 gyújt – sok keverék a kipufogóban, nagy lángok.</p>
+        <p>• <b>Durrogás:</b> 2 kimarad, 1 gyújt – sűrű, mély lövések.</p>
+        <p>• <b>AK-47:</b> 1 kimarad, 1 gyújt – gyors, géppuskaszerű staccato.</p>
+        <p>• <b>Ágyúlövés:</b> kb. 1,6 s teljes tiltás (a kipufogó megtelik keverékkel), majd visszajön a szikra: egy nagy dörrenés és tűzgolyó.</p>
       </div>
-    </div>
-
-    <!-- Anti-Flood Safety Timeout -->
-    <div class="slider-block">
-      <div class="control-row">
-        <div class="control-label-group">
-          <div class="control-label">Leállás- & túldúsulás védelem</div>
-          <div class="control-sub">Max. egybefüggő tiltás ideje (védi a motort)</div>
-        </div>
-        <div id="valTimeout" class="control-val-pill">3.0 s</div>
+      <div class="msec">
+        <h3>👻 Ghost Cam™ / V8 alapjárat</h3>
+        <p>Alapjáraton (650–1250 RPM) ritmikusan kihagy egy-egy szikrát, mint egy hegyes vezértengelyes V8. 1250 RPM fölött magától kikapcsol.</p>
       </div>
-      <input type="range" id="cfgTimeout" min="1.0" max="6.0" step="0.5" value="3.0" oninput="updateSliders(); sendConfig()">
-    </div>
-
-    <!-- Save Settings Button -->
-    <button class="save-flash-btn" onclick="saveToFlash()">
-      <span>💾</span> BEÁLLÍTÁSOK MENTÉSE (FLASH)
-    </button>
-
-    <!-- Restore Recommended Defaults Button -->
-    <button class="restore-btn" onclick="restoreDefaults()">
-      <span>🔄</span> AJÁNLOTT ÉRTÉKEK VISSZAÁLLÍTÁSA
-    </button>
-
-    <!-- Wireless Firmware Update (OTA) -->
-    <div class="slider-block" style="border-top: 1px solid var(--panel-border); padding-top: 14px; margin-top: 6px;">
-      <div class="control-row">
-        <div class="control-label-group">
-          <div class="control-label" style="color: var(--neon-cyan);">📡 Vezeték nélküli frissítés (OTA)</div>
-          <div class="control-sub">Frissítsd a vezérlőt telefonról, kiszerelés nélkül!</div>
-        </div>
+      <div class="msec">
+        <h3>📟 Mi tilt most?</h3>
+        <p>A fordulatszám fölötti sávban: <b>2-STEP</b> (show gomb), <b>RAJT</b>, <b>KAPCSOLÓ</b> (GPIO 23), <b>REDLINE</b>, <b>DURROGÁS</b>, <b>GHOST CAM</b>, <b>PADTESZT</b>. <b>ANTI-FLOOD ZÁR:</b> tiltás lenne, de az időkorlát miatt a gyújtás vissza van adva.</p>
       </div>
-      <div class="ota-wrap">
-        <input type="file" id="otaFileInput" accept=".bin" style="display: none;" onchange="handleOtaFileSelect(event)">
-        <button type="button" class="ota-pick-btn" onclick="document.getElementById('otaFileInput').click()">
-          <span>📁</span> FIRMWARE (.BIN) KIVÁLASZTÁSA
-        </button>
-        <div id="otaFileName" class="ota-file-name">Nincs fájl kiválasztva</div>
-        <button type="button" id="otaUploadBtn" class="ota-flash-btn" style="display: none;" onclick="startOtaUpload()">
-          <span>🚀</span> TELEPÍTÉS VEZETÉK NÉLKÜL
-        </button>
-        <div id="otaProgressBox" class="ota-progress-box">
-          <div id="otaProgressFill" class="ota-progress-fill"></div>
-          <div id="otaProgressLbl" class="ota-progress-lbl">0%</div>
-        </div>
+      <div class="msec">
+        <h3>🛡️ Biztonság</h3>
+        <p>• <b>Főkapcsoló:</b> kikapcsolva a vezérlő soha nem vesz el szikrát.</p>
+        <p>• <b>Anti-flood:</b> a beállított ideig (pl. 3 s) tartó egybefüggő tiltás után visszaadja a gyújtást, hogy a gyertyák ne ázzanak el; a zár a tiltási kérés végéig tart (pl. a gomb elengedéséig). Jobb szélen (∞) kikapcsol.</p>
+        <p>• 2000 RPM alatt nincs tiltás (kivéve Ghost Cam, padteszt). Áramtalanítva, újraindulás és frissítés alatt a gyári gyújtás 100%-ban működik.</p>
+      </div>
+      <div class="msec">
+        <h3>💾 Mentés</h3>
+        <p>A változtatások azonnal, de ideiglenesen élnek. A kiemelt mentés gomb jelzi a nem mentett változást; a „mentve” üzenet a vezérlő visszaigazolása után jön.</p>
+      </div>
+      <div class="msec">
+        <h3>📡 Firmware frissítés</h3>
+        <p>Három mód (részletek a Firmware frissítés kártyán): <b>telefonon át</b> (ajánlott; mobilnet kell az autó Wi-Fi-je mellett), <b>Wi-Fi-n</b> (az ESP maga tölti le egy internetes Wi-Fi-n) és <b>kézi .bin feltöltés</b>. Utána a vezérlő újraindul, az oldal ellenőrzi az új verziót; hiba esetén a régi marad. Álló motornál frissíts.</p>
       </div>
     </div>
-
+    <div class="modal-foot"><button class="btn" onclick="closeModal()">RENDBEN, ÉRTETTEM</button></div>
   </div>
+</div>
 
-  <div id="toast" class="toast">BEÁLLÍTÁSOK ELMENTVE!</div>
+<script>
+'use strict';
+// ---- Helpers
+const $ = id => document.getElementById(id);
+const DEMO = location.protocol === 'file:' || /[?&]demo=1(&|$)/.test(location.search);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('swift.' + k); return v === null ? d : v; } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem('swift.' + k, v); } catch (e) {} }
+};
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+// haptics need a prior user tap (Chrome logs an error otherwise)
+const vibrate = p => { try { const a = navigator.userActivation; if (navigator.vibrate && (!a || a.hasBeenActive)) navigator.vibrate(p); } catch (e) {} };
+const dec = (v, n) => Number(v).toFixed(n).replace('.', ',');
+const kb = b => Math.round((b || 0) / 1024) + ' KB';
+const txt = (id, s) => { $(id).textContent = s; };
 
-  <!-- Detailed Help & Info Modal Dialog -->
-  <div id="infoModal" class="modal-backdrop">
-    <div class="modal-card">
-      <div class="modal-header">
-        <div class="modal-title">
-          <span>ℹ</span> FUNKCIÓ LEÍRÁSOK
-        </div>
-        <button class="modal-close-btn" onclick="closeModal()">✕</button>
-      </div>
-      <div class="modal-body">
-        
-        <div class="modal-section">
-          <div class="modal-section-title">🏁 Rajtautomatika / 2-Step (Launch Control)</div>
-          <p>• <span class="modal-highlight">⚡ Hands-Free Rajt mód:</span> Nem kell nyomva tartani a telefont! Egy érintéssel élesíted (10 mp készenlét), mindkét kezed szabad a kormányon és a váltón. Kuplung be, padlógáz: a motor a beállított értéken (pl. 3800 RPM) dadog és lángol. Amint leugrasz a kuplungról, a hajtáslánc terhelését érzékelve a vezérlő <span class="modal-highlight">automatikusan kioldja a tiltást</span>, és azonnal kilősz!</p>
-          <p>• <span class="modal-highlight">🔥 Show mód:</span> Állóhelyzeti durrogtatáshoz és lángokhoz haveroknak: a gombot nyomva tartva tiltáson tarthatod a motort.</p>
-          <p>• <span class="modal-highlight">🏎️ Fizikai kapcsoló (GPIO 23):</span> Kézifékkarra vagy kuplungpedálra kötve automatikusan és közvetlenül is vezérelhető!</p>
-        </div>
+let toastTimer = 0;
+function toast(msg, kind) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + (kind || '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), kind === 'err' ? 5000 : 2600);
+}
 
-        <div class="modal-section">
-          <div class="modal-section-title">🔥 Ghost Cam™ / V8 Alapjárat</div>
-          <p>Alapjáraton (650–1200 RPM között) ritmikusan szikrát vesz el, létrehozva a hegyes vezérműtengellyel ellátott amerikai V8 drag motorok agresszív, lusta dadogását.</p>
-          <p><span class="modal-highlight">Biztonsági funkció:</span> Amint rálépsz a gázra és a motor 1250 RPM fölé ér, azonnal és észrevétlenül kikapcsol, a motor simán és teljes erővel forog fel!</p>
-        </div>
+// Live state reported by the firmware
+const S = { connected: false, rpm: 0, cut: false, reason: 0 };
 
-        <div class="modal-section">
-          <div class="modal-section-title">⚡ Maximális tiltás (Redline Limiter)</div>
-          <p>A motorvédelem felső plafonja (pl. 6200 RPM). A gyári lassú üzemanyag-elvétel helyett villámgyors szikra-elvétellel dolgozik, így a japán motorsportból ismert legendás <span class="modal-highlight">Bee*R limiter</span> stílusú géppuskahangot és lángokat ad.</p>
-        </div>
+// ---- RPM readout: big number + slim bar (0..8000 RPM)
+const MAX_RPM = 8000;
+const G = { rpm: 0, shown: -1, peak: 0, redline: 0, warn: 0, raf: 0 };
+const elRpm = $('rpmNum'), elFill = $('rpmFill');
+const pct = rpm => Math.max(0, Math.min(100, rpm / MAX_RPM * 100)) + '%';
 
-        <div class="modal-section">
-          <div class="modal-section-title">💥 Gázelvételi durrogás (Overrun Decel)</div>
-          <p>Ha a beállított küszöb (pl. 3200 RPM) feletti fordulatról hirtelen leveszed a lábad a gázról, a motorféküzem során rövid szikravágásokat iktat be. A kipufogóba jutó elégetlen keverék a forró csőben robban fel látványos pufogásokkal.</p>
-        </div>
+// Warning and red zones and the readout colors follow the configured redline
+function setRedline(redline) {
+  if (redline === G.redline) return;
+  G.redline = redline;
+  G.warn = Math.max(2000, redline - 1700);
+  $('zoneWarn').style.left = pct(G.warn);
+  $('zoneWarn').style.width = pct(redline - G.warn);
+  $('zoneRed').style.left = pct(redline);
+  G.shown = -1;
+  drawRpm();
+}
+function setRpm(rpm) {
+  G.rpm = rpm;
+  if (!G.raf) G.raf = requestAnimationFrame(drawRpm);
+}
+function drawRpm() {
+  G.raf = 0;
+  const rpm = Math.max(0, Math.min(MAX_RPM, G.rpm | 0));
+  if (rpm === G.shown) return;
+  G.shown = rpm;
+  const zone = rpm >= G.redline ? ' danger' : rpm >= G.warn ? ' warn' : '';
+  elRpm.textContent = rpm;
+  elRpm.className = 'rpm' + zone;
+  elFill.className = 'rpm-fill' + zone;
+  elFill.style.transform = 'scaleX(' + (rpm / MAX_RPM).toFixed(4) + ')';
+  if (rpm > G.peak) { G.peak = rpm; txt('peak', 'CSÚCS ' + rpm); }
+}
+function resetPeak() { G.peak = 0; txt('peak', 'CSÚCS 0'); toast('Csúcsérték nullázva'); }
 
-        <div class="modal-section">
-          <div class="modal-section-title">🎯 Kipufogó hangzás és mintázatok</div>
-          <p>• <span class="modal-highlight">Kemény tiltás (Hard Cut):</span> 40ms vágás / 40ms szikra — klasszikus gyors Bee*R limiter.</p>
-          <p>• <span class="modal-highlight">Lángcsóva (Flames):</span> 60ms vágás / 30ms szikra — több üzemanyag jut a kipufogóba, hatalmas lángnyelvek.</p>
-          <p>• <span class="modal-highlight">Durrogás (Gunfire):</span> 50ms vágás / 40ms szikra — sűrű, mély lövések és ropogás.</p>
-          <p>• <span class="modal-highlight">AK-47:</span> Ultramagas frekvenciájú, 25ms staccato géppuskasorozat!</p>
-          <p>• <span class="modal-highlight">Ágyúlövés (Bomba):</span> ~1.6 másodperces teljes szikramegvonás (a kipufogó megtelik benzinnel), majd hirtelen szikravisszaadás ➔ brutális dörrenés és hatalmas lángnyelv!</p>
-        </div>
+// What is cutting the spark right now (telemetry `reason`)
+const REASONS = ['', '2-STEP', 'RAJT', 'KAPCSOLÓ', 'REDLINE', 'DURROGÁS', 'GHOST CAM', 'PADTESZT', 'ANTI-FLOOD ZÁR'];
+let cutKey = 'x', cutHoldUntil = 0;
+function renderCut() {
+  const now = Date.now(), lock = S.reason === 8, on = S.connected && (S.cut || lock);
+  const key = !S.connected ? 'x' : on ? (lock ? 'L' : 'C' + S.reason) : '';
+  if (on) cutHoldUntil = now + 400;
+  else if (key === '' && now < cutHoldUntil) return;   // on a limiter the cut toggles fast: keep it readable
+  if (key === cutKey) return;
+  cutKey = key;
+  const b = $('cutLine');
+  b.className = 'cut-line' + (on ? (lock ? ' lock' : ' on') : '');
+  b.textContent = key === 'x' ? 'NINCS ADAT' : lock ? '⏸ ANTI-FLOOD ZÁR' : on ? '⚡ TILTÁS: ' + (REASONS[S.reason] || 'AKTÍV') : '✓ NINCS TILTÁS';
+  $('cluster').classList.toggle('cutting', on && !lock);
+  if (L.showHeld) renderLaunch();
+}
 
-        <div class="modal-section">
-          <div class="modal-section-title">🛡️ Biztonság & Memória (NVS Flash)</div>
-          <p>• <span class="modal-highlight">Trafó zavarszűrés:</span> 4000 µs zajzár és adaptív szűrés védi a fordulatszám jelet a gyújtótrafó visszarúgásaitól.</p>
-          <p>• <span class="modal-highlight">Leállás védelem (Anti-Flood):</span> A megadott idő (pl. 3 mp) folyamatos tiltás után a vezérlő kötelezően visszaadja a gyújtást, hogy megelőzze a gyertyák beköpését. Ha a csúszkát teljesen jobbra húzod (NINCS LIMIT ∞), a védelem kikapcsol, és a tiltás folyamatos marad.</p>
-          <p>• <span class="modal-highlight">Mentés & Visszaállítás:</span> A beállítások az ESP32 belső flash memóriájába íródnak, így áramtalanítás után sem vesznek el.</p>
-        </div>
+// ---- WebSocket link (port 81): stale detection + reconnect
+let ws = null, wsTimer = 0, wsFails = 0, wsStartedAt = 0, wsSuspended = false;
+let lastMsgAt = 0, cfgReceived = false, cfgAskAt = 0, rateN = 0, rateAt = Date.now();
 
-      </div>
-      <div class="modal-footer">
-        <button class="modal-ack-btn" onclick="closeModal()">RENDBEN, ÉRTETTEM</button>
-      </div>
-    </div>
-  </div>
+function wsSend(msg) {
+  if (DEMO) { if (!sim.online) return false; sim.recv(msg); return true; }
+  if (ws && ws.readyState === 1) { try { ws.send(msg); return true; } catch (e) {} }
+  return false;
+}
+function connectWS() {
+  clearTimeout(wsTimer);
+  if (DEMO || wsSuspended) return;
+  dropWS();
+  let sock;
+  try { sock = new WebSocket('ws://' + (location.hostname || '192.168.4.1') + ':81/'); }
+  catch (e) { scheduleReconnect(); return; }
+  ws = sock;
+  wsStartedAt = Date.now();
+  sock.onopen = () => { if (ws === sock) linkUp(); };
+  sock.onmessage = e => { if (ws === sock) onMessage(String(e.data)); };
+  sock.onclose = () => { if (ws === sock) { ws = null; linkDown(); scheduleReconnect(); } };
+}
+function dropWS() {
+  if (!ws) return;
+  const s = ws;
+  ws = null;
+  s.onopen = s.onmessage = s.onclose = null;
+  try { s.close(); } catch (e) {}
+}
+function scheduleReconnect() {
+  clearTimeout(wsTimer);
+  if (wsSuspended) return;
+  wsFails++;
+  wsTimer = setTimeout(connectWS, Math.min(1000 * wsFails, 4000));
+}
+// The socket is closed during a firmware upload (frees the ESP) and resumed afterwards
+function suspendWS(on) {
+  if (DEMO || wsSuspended === on) return;
+  wsSuspended = on;
+  if (on) { clearTimeout(wsTimer); dropWS(); linkDown(); }
+  else { wsFails = 0; connectWS(); }
+}
+function setConn(state) {
+  $('statusPill').className = 'pill ' + state;
+  txt('statusText', wsSuspended ? 'FRISSÍTÉS…' : { connecting: 'KERESÉS…', up: DEMO ? 'DEMÓ' : 'KAPCSOLÓDVA', down: 'KERESÉS…' }[state]);
+}
+function linkUp() {
+  S.connected = true;
+  lastMsgAt = cfgAskAt = Date.now();
+  cfgReceived = false;
+  wsSend('GET_CONFIG');
+  setConn('up');
+  renderLaunch();
+  refreshInfo();
+}
+function linkDown() {
+  S.connected = false;
+  S.cut = false;
+  S.reason = 0;
+  showRelease();
+  setConn('down');
+  renderCut();
+  renderLaunch();
+  if (saving) saveFailed('Megszakadt a kapcsolat.');
+}
+function onMessage(msg) {
+  lastMsgAt = Date.now();
+  wsFails = 0;
+  if (msg.startsWith('T:')) { rateN++; onTelemetry(msg.slice(2)); }
+  else if (msg.startsWith('CFG:')) onConfig(msg.slice(4));
+  else if (msg.startsWith('ACK:SAVED')) onSaved();
+}
+// T:<rpm>,<cut>,<launchState>,<launchLeftMs>,<reason>   (old firmware sends only the first 3)
+function onTelemetry(p) {
+  const f = p.split(',');
+  const ls = f.length > 2 ? (parseInt(f[2], 10) || 0) : 0;
+  const left = f.length > 3 ? parseInt(f[3], 10) : NaN;
+  const reason = f.length > 4 ? parseInt(f[4], 10) : NaN;
+  S.rpm = parseInt(f[0], 10) || 0;
+  S.cut = f[1] === '1';
+  S.reason = isNaN(reason) ? -1 : reason;
+  setRpm(S.rpm);
+  renderCut();
+  onLaunchTelemetry(ls, isNaN(left) ? null : left);
+}
+// Watchdog: stale link, missing CFG, launch countdown, telemetry rate
+setInterval(() => {
+  const now = Date.now();
+  if (!DEMO && ws && ((ws.readyState === 1 && now - lastMsgAt > 1500) || (ws.readyState === 0 && now - wsStartedAt > 4000))) {
+    dropWS(); linkDown(); scheduleReconnect();
+  }
+  if (S.connected && !cfgReceived && now - cfgAskAt > 2000) { cfgAskAt = now; wsSend('GET_CONFIG'); }
+  renderCut();
+  if (S.connected && L.state === 1 && L.mode === 'handsfree') renderCountdown(now);
+  if (now - rateAt >= 1000) {
+    const hz = Math.round(rateN * 1000 / (now - rateAt));
+    rateN = 0; rateAt = now;
+    txt('sysRate', S.connected ? hz + ' Hz' : 'nincs kapcsolat');
+  }
+}, 100);
 
-  <script>
-    let ws;
-    let currentPattern = 0;
-    let peakRpm = 0;
-    let isConnected = false;
+// ---- Launch control (hands-free) and show-mode 2-step button
+const L = {
+  mode: store.get('mode', 'handsfree') === 'show' ? 'show' : 'handsfree',
+  state: 0, leftMs: 0, leftAt: 0, totalMs: 10000,
+  cmdAt: 0, cmdState: 0, armSentAt: 0, lastTapAt: 0, fixAt: 0,
+  showHeld: false, showTimer: 0, pid: null
+};
+const btn = $('btnTwoStep');
 
-    // SVG Dial Geometry Constants
-    const CX = 160;
-    const CY = 128;
-    const R_TRACK = 105;
-    const START_ANGLE = 140; // 0 RPM (bottom-left)
-    const TOTAL_SWEEP = 260; // 0 to 8000 RPM
-    const MAX_RPM = 8000;
-    const TOTAL_ARC_LEN = 2 * Math.PI * R_TRACK * (TOTAL_SWEEP / 360); // ~476 px
+function setLaunchMode(m) {
+  if (m === L.mode) return;
+  showRelease();
+  if (L.state === 1 || L.state === 2) { wsSend('LAUNCH:DISARM'); setLaunchLocal(0); }
+  L.mode = m;
+  store.set('mode', m);
+  renderLaunch();
+}
+function setLaunchLocal(st) {
+  L.cmdAt = Date.now();
+  L.cmdState = L.state = st;
+  if (st !== 1) L.leftAt = 0;
+  renderLaunch();
+}
+function onLaunchTelemetry(ls, left) {
+  const now = Date.now();
+  if (now - L.cmdAt < 600 && ls !== L.cmdState) return;   // older than our last command
+  if (L.mode === 'show') {
+    // hands-free launch must never stay armed behind the show-mode UI
+    if ((ls === 1 || ls === 2) && now - L.fixAt > 1000) { L.fixAt = now; wsSend('LAUNCH:DISARM'); }
+    return;
+  }
+  if (ls === 1) {
+    if (left !== null) { L.leftMs = left; L.leftAt = now; if (left > L.totalMs) L.totalMs = left; }
+    else if (!L.leftAt) { L.leftMs = 10000; L.leftAt = now; }   // old firmware: local countdown
+  }
+  if (ls === L.state) return;
+  const prev = L.state;
+  L.state = ls;
+  if (ls !== 1) L.leftAt = 0;
+  if (ls === 2) vibrate(40);
+  else if (ls === 3) vibrate([80, 40, 120]);
+  else if (ls === 0 && prev === 1) toast(now - L.armSentAt < 2000 ? 'A vezérlő nem nyugtázta az élesítést – koppints újra' : 'Rajt-élesítés lejárt', 'warn');
+  else if (ls === 0 && prev === 2) toast('Rajt megszakítva (gázelvétel vagy anti-flood)', 'warn');
+  renderLaunch();
+}
+function onLaunchTap() {
+  const now = Date.now();
+  if (now - L.lastTapAt < 400) return;   // second tap of a double tap: ignore (no accidental disarm)
+  L.lastTapAt = now;
+  if (!S.connected) { toast('Nincs kapcsolat a vezérlővel', 'err'); vibrate([30, 30, 30]); return; }
+  if (L.state === 0) {
+    if (!$('cfgArmed').checked) { toast('A rendszer ki van kapcsolva (Biztonság kártya)', 'warn'); vibrate([30, 30, 30]); return; }
+    if (!wsSend('LAUNCH:ARM')) { toast('Nincs kapcsolat a vezérlővel', 'err'); return; }
+    L.armSentAt = now;
+    L.totalMs = L.leftMs = 10000;
+    setLaunchLocal(1);
+    L.leftAt = now;
+    renderCountdown(now);
+    vibrate(50);
+  } else {
+    if (!wsSend('LAUNCH:DISARM')) { toast('Nincs kapcsolat a vezérlővel', 'err'); return; }
+    setLaunchLocal(0);
+    vibrate([30, 40, 30]);
+    toast('Élesítés törölve');
+  }
+}
+function renderCountdown(now) {
+  const left = L.leftAt ? Math.max(0, L.leftMs - (now - L.leftAt)) : 0;
+  $('cdFill').style.transform = `scaleX(${Math.min(1, left / L.totalMs).toFixed(3)})`;
+  txt('fireSub', 'MÉG ' + dec(left / 1000, 1) + ' MP • KOPPINTÁS = MÉGSE');
+}
+function renderLaunch() {
+  const hf = L.mode === 'handsfree';
+  [['modeHandsFree', hf], ['modeShow', !hf]].forEach(([id, on]) => { $(id).classList.toggle('active', on); $(id).setAttribute('aria-pressed', on); });
+  let cls = hf ? 'hf' : 'show', title, sub = '';
+  if (!S.connected) {
+    cls += ' offline'; title = '🔌 NINCS KAPCSOLAT'; sub = 'VÁRAKOZÁS A VEZÉRLŐRE…';
+  } else if (!hf) {
+    if (L.showHeld) {
+      cls += ' pressed'; title = '🔥 2-STEP AKTÍV 🔥';
+      sub = S.reason === 7 ? 'PADTESZT • ÁLLÓ MOTOR, FOLYAMATOS TILTÁS' : S.reason === 8 ? 'ANTI-FLOOD ZÁR • ENGEDD EL' : 'ENGEDD EL A LEÁLLÍTÁSHOZ';
+    } else { title = '🏁 SHOW MÓD / 2-STEP'; sub = 'TARTSD NYOMVA A DURROGÁSHOZ ÉS LÁNGOKHOZ'; }
+  } else if (L.state === 1) {
+    cls += ' armed'; title = '⚡ RAJTRA KÉSZ • ARMED';
+  } else if (L.state === 2) {
+    cls += ' holding'; title = '🔥 TILTÁS • ' + $('cfgLaunch').value + ' RPM'; sub = 'ENGEDD FEL A KUPLUNGOT A RAJTHOZ!';
+  } else if (L.state === 3) {
+    cls += ' fired'; title = '🚀 RAJT! KILÖVÉS'; sub = 'TILTÁS FELOLDVA • PADLÓGÁZ!';
+  } else {
+    title = '🏁 RAJTAUTOMATIKA ÉLESÍTÉSE'; sub = 'KOPPINTS AZ ÉLESÍTÉSHEZ • 10 MP KÉSZENLÉT';
+  }
+  btn.className = 'fire-btn ' + cls;
+  txt('fireTitle', title);
+  if (sub) txt('fireSub', sub); else renderCountdown(Date.now());
+  $('lsSteps').hidden = !hf;
+  document.querySelectorAll('#lsSteps span').forEach(s => s.classList.toggle('on', S.connected && +s.dataset.s === L.state));
+  $('armWarn').hidden = $('cfgArmed').checked;
+}
+// Show mode: BTN:1 on press, re-sent every 200 ms while held (dead-man), BTN:0 on release
+function showPress() {
+  if (L.showHeld) return false;
+  if (!S.connected || !wsSend('BTN:1')) { toast('Nincs kapcsolat a vezérlővel', 'err'); vibrate([30, 30, 30]); return false; }
+  L.showHeld = true;
+  L.showTimer = setInterval(() => { if (!wsSend('BTN:1')) showRelease(); }, 200);
+  vibrate(40);
+  renderLaunch();
+  return true;
+}
+function showRelease() {
+  L.pid = null;
+  if (!L.showHeld) return;
+  L.showHeld = false;
+  clearInterval(L.showTimer);
+  wsSend('BTN:0');
+  renderLaunch();
+}
+btn.addEventListener('click', () => { if (L.mode === 'handsfree') onLaunchTap(); });
+btn.addEventListener('pointerdown', e => {
+  if (L.mode !== 'show' || e.button > 0) return;
+  e.preventDefault();
+  if (showPress()) { L.pid = e.pointerId; try { btn.setPointerCapture(e.pointerId); } catch (x) {} }
+});
+['pointerup', 'pointercancel', 'pointerleave', 'lostpointercapture'].forEach(n => btn.addEventListener(n, e => {
+  if (L.pid === null || e.pointerId === L.pid) showRelease();
+}));
+btn.addEventListener('keydown', e => { if (L.mode === 'show' && e.key === ' ') { e.preventDefault(); if (!e.repeat) showPress(); } });
+btn.addEventListener('keyup', e => { if (e.key === ' ') showRelease(); });
+btn.addEventListener('contextmenu', e => e.preventDefault());
+document.addEventListener('visibilitychange', () => { if (document.hidden) showRelease(); });
+window.addEventListener('blur', showRelease);
 
-    const needleGroup = document.getElementById('needleGroup');
-    const activeArc = document.getElementById('activeArc');
-    const rpmNum = document.getElementById('rpmNum');
-    const peakBadge = document.getElementById('peakBadge');
-    const statusBadge = document.getElementById('statusBadge');
-    const statusText = document.getElementById('statusText');
-    const sparkAlert = document.getElementById('sparkAlert');
-    const btnTwoStep = document.getElementById('btnTwoStep');
-    const fireBtnTitle = document.getElementById('fireBtnTitle');
-    const fireBtnSub = document.getElementById('fireBtnSub');
-    const launchMarker = document.getElementById('launchMarker');
-    const redlineMarker = document.getElementById('redlineMarker');
-    const patternDisplay = document.getElementById('patternDisplay');
+// ---- Settings: SET_CFG (throttled, trailing send), SAVE_FLASH -> ACK:SAVED
+// id: [min, max, step, default, title, subtitle]
+const SLIDERS = {
+  cfgLaunch: [2500, 6500, 50, 3800, 'Rajt limit (2-step)', 'Ezen a fordulaton tart a rajt és a show mód'],
+  cfgDrop: [300, 1500, 50, 600, 'Kuplung-felengedés érzékenység', 'Ennyivel a limit alá eső fordulat = kuplung fent'],
+  cfgRedline: [3000, 7500, 50, 6200, 'Fordulatszám-limit', 'E fölött mindig tilt – motorvédelem'],
+  cfgDecel: [2500, 6000, 50, 3200, 'Bekapcsolási küszöb', 'Csak e fordulat fölötti gázelvételnél durrog'],
+  cfgTimeout: [1, 6, 0.5, 3, 'Anti-flood: max. tiltási idő', 'Egybefüggő tiltás után visszaadja a gyújtást (gyertyavédelem)']
+};
+document.querySelectorAll('[data-sl]').forEach(d => {
+  const id = d.dataset.sl, [min, max, step, val, title, sub] = SLIDERS[id];
+  const stepBtn = (sign, label) => `<button class="step" data-t="${id}" data-d="${sign}${step}" aria-label="${title}: ${label}">${sign === '-' ? '−' : '+'}</button>`;
+  d.insertAdjacentHTML('afterbegin', `<div class="row"><div class="lbl"><b>${title}</b><small>${sub}</small></div><output id="val${id.slice(3)}" class="val"></output></div>`
+    + `<div class="sl-row">${stepBtn('-', 'csökkentés')}<input type="range" id="${id}" min="${min}" max="${max}" step="${step}" value="${val}" aria-label="${title}">${stepBtn('', 'növelés')}</div>`);
+});
 
-    let launchMode = 'handsfree'; // 'handsfree' or 'show'
-    let currentLaunchState = 0;   // 0=OFF, 1=ARMED, 2=HOLDING, 3=FIRED
+const CFG_DEF = { armed: true, launchRpm: 3800, redlineRpm: 6200, decelPops: true, decelRpm: 3200, cutPattern: 1, maxCutSeconds: 3.0, ghostCam: false, launchDrop: 600 };
+const INPUTS = { armed: 'cfgArmed', launchRpm: 'cfgLaunch', launchDrop: 'cfgDrop', redlineRpm: 'cfgRedline', decelPops: 'cfgDecelPops', decelRpm: 'cfgDecel', ghostCam: 'cfgGhostCam', maxCutSeconds: 'cfgTimeout' };
+const KEY_OF = {};
+for (const k in INPUTS) KEY_OF[INPUTS[k]] = k;
+const PATTERN_NAMES = ['KEMÉNY TILTÁS', 'LÁNGCSÓVA', 'DURROGÁS', 'AK-47', 'ÁGYÚLÖVÉS'];
+let curPattern = 1, cfgLoaded = false;
+// dirty = changed by the user since the last confirmed save; pend = changed but not sent yet
+const dirty = new Set(), pend = new Set();
+let saving = false, savingKeys = null, saveTimer = 0, lastCfgSentAt = 0, cfgSendTimer = 0;
+const isDirty = () => dirty.size > 0;
 
-    const patternNames = ["KEMÉNY TILTÁS", "LÁNGCSÓVA", "DURROGÁS", "AK-47 SOROZAT", "ÁGYÚLÖVÉS / BOMBA"];
+function readCfg() {
+  const c = {};
+  for (const k in INPUTS) { const el = $(INPUTS[k]); c[k] = el.type === 'checkbox' ? el.checked : Number(el.value); }
+  if (c.maxCutSeconds >= 6) c.maxCutSeconds = 0;   // slider end = unlimited
+  c.cutPattern = curPattern;
+  return c;
+}
+function applyCfg(c, skip) {
+  const use = k => c[k] !== undefined && c[k] !== null && !(skip && skip.has(k));
+  for (const k in INPUTS) {
+    if (!use(k)) continue;
+    const el = $(INPUTS[k]), v = c[k];
+    if (el.type === 'checkbox') el.checked = !!v;
+    else el.value = k === 'maxCutSeconds' && (v <= 0.05 || v >= 6) ? 6 : v;
+  }
+  if (use('cutPattern')) curPattern = Math.max(0, Math.min(4, c.cutPattern | 0));
+}
+function renderCfg() {
+  const c = readCfg();
+  const sum = (id, s, cls) => { txt(id, s); $(id).className = 'sv ' + (cls || ''); };
+  txt('valLaunch', c.launchRpm + ' RPM');
+  txt('valDrop', '−' + c.launchDrop + ' RPM');
+  txt('valRedline', c.redlineRpm + ' RPM');
+  txt('valDecel', c.decelRpm + ' RPM');
+  txt('valTimeout', c.maxCutSeconds ? dec(c.maxCutSeconds, 1) + ' s' : 'NINCS LIMIT (∞)');
+  $('valTimeout').classList.toggle('danger', !c.maxCutSeconds);
+  txt('dropHint', 'Rajtkor akkor old, ha a fordulat ' + Math.max(0, c.launchRpm - c.launchDrop) + ' RPM alá esik.');
+  $('launchWarn').hidden = c.launchRpm < c.redlineRpm;
+  $('decelBlock').classList.toggle('off', !c.decelPops);
+  sum('sumLaunch', c.launchRpm + ' RPM');
+  sum('sumLimiter', c.redlineRpm + ' RPM');
+  sum('sumDecel', c.decelPops ? c.decelRpm + ' RPM' : 'KI', c.decelPops ? '' : 'off');
+  sum('sumSound', PATTERN_NAMES[curPattern] + (c.ghostCam ? ' + GHOST' : ''));
+  sum('sumSafety', !c.armed ? 'KIKAPCSOLVA' : c.maxCutSeconds ? dec(c.maxCutSeconds, 1) + ' s' : '∞', !c.armed || !c.maxCutSeconds ? 'bad' : '');
+  document.querySelectorAll('.pat').forEach(p => p.classList.toggle('active', +p.dataset.p === curPattern));
+  txt('patMini', PATTERN_NAMES[curPattern]);
+  document.querySelectorAll('input[type=range]').forEach(el => el.style.setProperty('--p', ((el.value - el.min) / (el.max - el.min) * 100) + '%'));
+  $('mkLaunch').style.left = pct(c.launchRpm);
+  $('mkRed').style.left = pct(c.redlineRpm);
+  txt('lgLaunch', c.launchRpm);
+  txt('lgRed', c.redlineRpm);
+  setRedline(c.redlineRpm);
+  $('armWarn').hidden = c.armed;
+}
+function onUserChange(keys) {
+  keys.forEach(k => { dirty.add(k); pend.add(k); if (savingKeys) savingKeys.delete(k); });
+  renderCfg();
+  renderSave();
+  queueSend();
+}
+// Only changed keys are sent, at most 10 SET_CFG/s (the trailing send has the latest values),
+// and never before this connection's CFG arrived, so page defaults can't overwrite the device.
+function queueSend() {
+  if (!S.connected || !cfgReceived || !pend.size) return;
+  const wait = 100 - (Date.now() - lastCfgSentAt);
+  if (wait <= 0) sendCfgNow();
+  else if (!cfgSendTimer) cfgSendTimer = setTimeout(sendCfgNow, wait);
+}
+function sendCfgNow() {
+  clearTimeout(cfgSendTimer);
+  cfgSendTimer = 0;
+  if (!cfgReceived || !pend.size) return;
+  const c = readCfg(), part = {};
+  pend.forEach(k => { part[k] = c[k]; });
+  if (wsSend('SET_CFG:' + JSON.stringify(part))) { lastCfgSentAt = Date.now(); pend.clear(); }
+}
+function onConfig(json) {
+  let c;
+  try { c = JSON.parse(json); } catch (e) { return; }
+  if (!c || typeof c !== 'object') return;
+  cfgReceived = true;
+  if (c.fw) setFw(String(c.fw));
+  // Device values win, except keys the user changed and has not saved: those are sent again
+  // (the ESP may have rebooted and lost them)
+  const keep = new Set([...dirty, ...pend]);
+  applyCfg(c, keep);
+  keep.forEach(k => pend.add(k));
+  if (!cfgLoaded) { cfgLoaded = true; $('settings').classList.remove('loading'); }
+  renderCfg();
+  renderSave();
+  renderLaunch();
+  sendCfgNow();
+}
+function renderSave() {
+  const d = isDirty();
+  $('saveBtn').className = 'save-btn' + (saving ? ' saving' : d ? ' dirty' : '');
+  $('saveBtn').disabled = saving || !cfgLoaded;
+  txt('saveTxt', !cfgLoaded ? '⏳ BEÁLLÍTÁSOK BETÖLTÉSE…' : saving ? '⏳ MENTÉS…' : d ? '💾 MENTÉS A FLASH-BE' : '✔ BEÁLLÍTÁSOK MENTVE');
+  txt('saveSub', !cfgLoaded ? 'A vezérlő elküldi a jelenlegi értékeket' : saving ? 'Várakozás a vezérlő visszaigazolására' : d ? 'Nem mentett változás – újraindításkor elveszne' : 'Induláskor is ezeket tölti be');
+}
+function saveToFlash() {
+  if (saving) return;
+  if (!S.connected || !cfgReceived) { toast(S.connected ? 'Várj, amíg a beállítások betöltődnek' : 'Nincs kapcsolat – most nem lehet menteni', 'err'); return; }
+  sendCfgNow();
+  saving = true;
+  savingKeys = new Set(dirty);
+  renderSave();
+  // small gap after the last SET_CFG so the two frames reach the firmware separately;
+  // the ESP may answer up to ~1 s later (it waits for a moment without spark cut)
+  setTimeout(() => {
+    if (!saving) return;
+    if (!wsSend('SAVE_FLASH')) { saveFailed('Nincs kapcsolat.'); return; }
+    saveTimer = setTimeout(() => saveFailed('Nem jött visszaigazolás.'), 4000);
+  }, Math.max(0, 150 - (Date.now() - lastCfgSentAt)));
+}
+function onSaved() {
+  if (!saving) return;
+  clearTimeout(saveTimer);
+  saving = false;
+  savingKeys.forEach(k => dirty.delete(k));   // keys changed during the save stay dirty
+  savingKeys = null;
+  renderSave();
+  toast('✔ Beállítások elmentve a flash-be');
+  vibrate(30);
+}
+function saveFailed(why) {
+  clearTimeout(saveTimer);
+  saving = false;
+  savingKeys = null;
+  renderSave();
+  toast('A mentés nem sikerült: ' + why + ' Próbáld újra.', 'err');
+}
+function restoreDefaults() {
+  if (!S.connected || !cfgReceived) { toast('Nincs kapcsolat a vezérlővel', 'err'); return; }
+  if (!confirm('Visszaállítod az ajánlott értékeket?\nA jelenlegi beállítások felülíródnak és a flash-be mentődnek.')) return;
+  applyCfg(CFG_DEF);
+  onUserChange(Object.keys(CFG_DEF));
+  saveToFlash();
+}
+// Inputs, pattern cards and the -/+ steppers
+document.querySelectorAll('#settings input').forEach(el => el.addEventListener(el.type === 'range' ? 'input' : 'change', () => onUserChange([KEY_OF[el.id]])));
+document.querySelectorAll('#pats .pat').forEach(p => {
+  p.insertAdjacentHTML('beforeend', '<span class="seq">' + p.dataset.seq.split('').map(ch => `<i class="${ch === 'o' ? 'f' : ch === 'L' ? 'L' : ''}"></i>`).join('') + '</span>');
+  p.addEventListener('click', () => { if (curPattern !== +p.dataset.p) { curPattern = +p.dataset.p; onUserChange(['cutPattern']); } });
+});
+function stepSlider(b) {
+  const el = $(b.dataset.t);
+  const v = Math.min(+el.max, Math.max(+el.min, Math.round((+el.value + parseFloat(b.dataset.d)) * 10) / 10));
+  if (v !== +el.value) { el.value = v; onUserChange([KEY_OF[el.id]]); }
+}
+document.querySelectorAll('.step').forEach(b => b.addEventListener('click', () => stepSlider(b)));
 
-    function setLaunchMode(mode) {
-      launchMode = mode;
-      document.getElementById('modeHandsFree').className = 'mode-pill' + (mode === 'handsfree' ? ' active' : '');
-      document.getElementById('modeShow').className = 'mode-pill' + (mode === 'show' ? ' active' : '');
-      
-      if (currentLaunchState !== 0) {
-        if (ws && ws.readyState === WebSocket.OPEN) ws.send("LAUNCH:DISARM");
-        currentLaunchState = 0;
-      }
-      updateButtonUI();
+// ---- Device info + firmware update (HTTP API)
+const DEF_REPO = 'eng4t3/SwiftPopsAndBangs';
+const FW = { info: null, fw: '', code: 0, repo: DEF_REPO, branch: 'main', manifest: null, busy: false, reloading: false };
+const verCode = v => { const m = /^(\d+)\.(\d+)\.(\d+)/.exec(v || ''); return m ? m[1] * 10000 + m[2] * 100 + +m[3] : 0; };
+
+async function api(path, o = {}) {
+  if (DEMO) return sim.api(path, o);
+  const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), o.timeout || 4000);
+  let r, body;
+  try {
+    r = await fetch(path, { method: o.method || 'GET', body: o.body, cache: 'no-store', signal: ctl.signal,
+      headers: o.body !== undefined ? { 'Content-Type': 'application/x-www-form-urlencoded' } : {} });
+    body = await r.text();
+  } catch (e) {
+    const err = new Error('Nem érem el a vezérlőt (' + (ctl.signal.aborted ? 'időtúllépés' : 'hálózati hiba') + ').');
+    err.net = true;
+    throw err;
+  } finally { clearTimeout(tm); }
+  let j = null;
+  try { j = JSON.parse(body); } catch (e) {}
+  if (!r.ok) throw new Error((j && j.msg) || body.trim().slice(0, 200) || 'HTTP ' + r.status);
+  return j === null ? body : j;
+}
+function setFw(fw, code) {
+  if (!fw) return;
+  FW.fw = fw;
+  FW.code = code || verCode(fw);
+  txt('fwChip', 'v' + fw + ' • ');
+  $('fwChip').hidden = false;
+  txt('fwCur', 'v' + fw);
+  txt('sumFw', 'v' + fw);
+  txt('sysFw', 'v' + fw + ' (' + FW.code + ')');
+}
+async function refreshInfo() {
+  try { const i = await api('/api/info', { timeout: 3000 }); applyInfo(i); return i; }
+  catch (e) { return null; }
+}
+function applyInfo(i) {
+  if (!i || typeof i !== 'object') return;
+  FW.info = i;
+  setFw(String(i.fw || ''), +i.code || 0);
+  if (/^[\w.-]+\/[\w.-]+$/.test(i.repo || '')) FW.repo = i.repo;
+  if (i.branch) FW.branch = String(i.branch);
+  txt('fwBuilt', i.built ? 'fordítva: ' + i.built : '');
+  txt('sysHeap', i.heap ? kb(i.heap) : '–');
+  // prefill the ESP Wi-Fi form, but never overwrite what the user is editing
+  const fill = (id, v) => { const el = $(id); if (v !== undefined && !el.dataset.edited && document.activeElement !== el) { if (el.type === 'checkbox') el.checked = !!v; else el.value = v || ''; } };
+  fill('staSsid', i.staSsid);
+  fill('espRepo', i.repo);
+  fill('espBranch', i.branch);
+  fill('espAuto', i.autoCheck);
+  $('staPass').placeholder = i.staSsid ? 'üresen hagyva változatlan' : 'a Wi-Fi jelszava';
+}
+// Status line + progress bar used by all three update paths
+function otaUi(id) {
+  const box = $(id), msg = box.querySelector('.ota-msg'), bar = box.querySelector('.bar i');
+  return {
+    set(text, kind, pct) {
+      const prog = pct !== undefined && pct !== null;
+      box.hidden = false;
+      box.className = 'ota-st ' + (kind || '') + (prog ? ' prog' : '');
+      msg.textContent = text;
+      if (prog) bar.style.width = pct + '%';
+    },
+    progress(label, got, total) {
+      const pct = total ? Math.min(100, Math.round(got / total * 100)) : 0;
+      this.set(label + ': ' + (total ? pct + '% (' + kb(got) + ' / ' + kb(total) + ')' : kb(got)), 'info', pct);
     }
-
-    function updateButtonUI() {
-      btnTwoStep.className = 'fire-btn';
-      if (launchMode === 'show') {
-        fireBtnTitle.innerHTML = '🏁 SHOW MÓD / 2-STEP 🏁';
-        fireBtnSub.innerText = 'TARTSD NYOMVA A DURROGÁSHOZ ÉS LÁNGOKHOZ';
-      } else {
-        if (currentLaunchState === 1) { // ARMED
-          btnTwoStep.classList.add('armed');
-          fireBtnTitle.innerHTML = '⚡ RAJTRA KÉSZ / ARMED ⚡';
-          fireBtnSub.innerText = 'LÉPJ A GÁZRA • KUPLUNG FELENGEDÉSRE KILŐ!';
-        } else if (currentLaunchState === 2) { // HOLDING
-          btnTwoStep.classList.add('holding');
-          fireBtnTitle.innerHTML = '🔥 TILTÁS AKTÍV! LÁNGOK! 🔥';
-          fireBtnSub.innerText = 'ENGEDD FEL A KUPLUNGOT A RAJTHOZ!';
-        } else if (currentLaunchState === 3) { // FIRED
-          btnTwoStep.classList.add('fired');
-          fireBtnTitle.innerHTML = '🚀 RAJT! SIKERES KILÖVÉS 🚀';
-          fireBtnSub.innerText = 'TILTÁS FELOLDVA • PADLÓGÁZ!';
-        } else { // OFF
-          fireBtnTitle.innerHTML = '🏁 RAJTAUTOMATIKA ÉLESÍTÉSE 🏁';
-          fireBtnSub.innerText = 'KOPPINTS AZ ÉLESÍTÉSHEZ • 10 MP KÉSZENLÉT';
-        }
-      }
-    }
-
-    function openModal() {
-      document.getElementById('infoModal').classList.add('open');
-    }
-
-    function closeModal() {
-      document.getElementById('infoModal').classList.remove('open');
-    }
-
-    document.getElementById('infoModal').addEventListener('click', (e) => {
-      if (e.target === document.getElementById('infoModal')) {
-        closeModal();
-      }
-    });
-
-    window.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') closeModal();
-    });
-
-    function showToast(msg) {
-      const t = document.getElementById('toast');
-      t.innerText = msg;
-      t.classList.add('show');
-      setTimeout(() => t.classList.remove('show'), 2500);
-    }
-
-    // Build Graduated Ticks & Numbers around the Arc
-    function buildGaugeTicks() {
-      const g = document.getElementById('ticksGroup');
-      let html = '';
-
-      for (let rpm = 0; rpm <= MAX_RPM; rpm += 250) {
-        const fraction = rpm / MAX_RPM;
-        const deg = START_ANGLE + fraction * TOTAL_SWEEP;
-        const rad = deg * Math.PI / 180;
-
-        const isMajor = (rpm % 1000 === 0);
-        const isMid = (rpm % 500 === 0 && !isMajor);
-
-        const rOuter = R_TRACK + 7;
-        const rInner = isMajor ? (R_TRACK - 13) : (isMid ? (R_TRACK - 7) : (R_TRACK - 4));
-        const strokeWidth = isMajor ? 2.5 : (isMid ? 1.5 : 1);
-        const strokeColor = (rpm >= 6000) ? '#ff2247' : (rpm >= 4500 ? '#ffaa00' : (isMajor ? '#e0e8f5' : '#475569'));
-
-        const x1 = (CX + rInner * Math.cos(rad)).toFixed(1);
-        const y1 = (CY + rInner * Math.sin(rad)).toFixed(1);
-        const x2 = (CX + rOuter * Math.cos(rad)).toFixed(1);
-        const y2 = (CY + rOuter * Math.sin(rad)).toFixed(1);
-
-        html += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${strokeColor}" stroke-width="${strokeWidth}" stroke-linecap="round" />`;
-
-        // Render Numbers for major thousands
-        if (isMajor) {
-          const rText = R_TRACK - 24;
-          const tx = (CX + rText * Math.cos(rad)).toFixed(1);
-          const ty = (CY + rText * Math.sin(rad) + 4).toFixed(1);
-          const num = rpm / 1000;
-          const textColor = (rpm >= 6000) ? '#ff2247' : (rpm >= 4500 ? '#ffaa00' : '#a0b3cc');
-          html += `<text x="${tx}" y="${ty}" font-family="'Orbitron', sans-serif" font-size="12" font-weight="900" fill="${textColor}" text-anchor="middle">${num}</text>`;
-        }
-      }
-      g.innerHTML = html;
-    }
-
-    // Set Marker Tick on Rim
-    function updateMarker(element, rpm) {
-      const fraction = Math.max(0, Math.min(1, rpm / MAX_RPM));
-      const deg = START_ANGLE + fraction * TOTAL_SWEEP;
-      const rad = deg * Math.PI / 180;
-
-      const r1 = R_TRACK - 14;
-      const r2 = R_TRACK + 8;
-      const x1 = (CX + r1 * Math.cos(rad)).toFixed(1);
-      const y1 = (CY + r1 * Math.sin(rad)).toFixed(1);
-      const x2 = (CX + r2 * Math.cos(rad)).toFixed(1);
-      const y2 = (CY + r2 * Math.sin(rad)).toFixed(1);
-
-      element.setAttribute('x1', x1);
-      element.setAttribute('y1', y1);
-      element.setAttribute('x2', x2);
-      element.setAttribute('y2', y2);
-    }
-
-    // Update Live RPM Needle & Glow Arc
-    function setGaugeRpm(rpm) {
-      const clamped = Math.max(0, Math.min(MAX_RPM, rpm));
-      const fraction = clamped / MAX_RPM;
-      
-      // Update digital readout
-      rpmNum.innerText = clamped;
-      if (clamped >= 6200) {
-        rpmNum.className = 'digital-rpm rev-danger';
-      } else if (clamped >= 4500) {
-        rpmNum.className = 'digital-rpm rev-warning';
-      } else {
-        rpmNum.className = 'digital-rpm';
-      }
-
-      // Update Peak RPM
-      if (clamped > peakRpm) {
-        peakRpm = clamped;
-        peakBadge.innerText = "CSÚCS " + peakRpm;
-      }
-
-      // Rotate Needle: Exactly matches the tick calculation!
-      const deg = START_ANGLE + fraction * TOTAL_SWEEP;
-      needleGroup.style.transform = `rotate(${deg}deg)`;
-
-      // Active illuminated arc fill
-      const arcFilled = fraction * TOTAL_ARC_LEN;
-      activeArc.setAttribute('stroke-dasharray', `${arcFilled.toFixed(1)} ${TOTAL_ARC_LEN.toFixed(1)}`);
-    }
-
-    function resetPeak() {
-      peakRpm = 0;
-      peakBadge.innerText = "CSÚCS 0";
-      showToast("CSÚCSÉRTÉK NULLÁZVA!");
-    }
-
-    // Startup Needle Sweep Sequence (sweeps to 8k and returns to 0)
-    function runStartupSweep() {
-      let step = 0;
-      const sweepInterval = setInterval(() => {
-        step += 250;
-        if (step <= 8000) {
-          setGaugeRpm(step);
-        } else if (step <= 16000) {
-          setGaugeRpm(16000 - step);
-        } else {
-          clearInterval(sweepInterval);
-          setGaugeRpm(0);
-        }
-      }, 16);
-    }
-
-    // Connect WebSockets
-    function connectWS() {
-      const host = window.location.hostname || "192.168.4.1";
-      try {
-        if (ws) {
-          ws.onopen = null;
-          ws.onmessage = null;
-          ws.onclose = null;
-          ws.onerror = null;
-          ws.close();
-        }
-      } catch (e) {}
-
-      ws = new WebSocket('ws://' + host + ':81/');
-
-      ws.onopen = () => {
-        isConnected = true;
-        statusBadge.className = "status-pill connected";
-        statusText.innerText = "KAPCSOLÓDVA";
-        ws.send("GET_CONFIG");
-        runStartupSweep();
-      };
-
-      ws.onerror = () => {
-        // triggers reconnect via onclose
-      };
-
-      ws.onclose = () => {
-        isConnected = false;
-        statusBadge.className = "status-pill";
-        statusText.innerText = "ÚJRACSATLAKOZÁS...";
-        setTimeout(connectWS, 1500);
-      };
-
-      ws.onmessage = (evt) => {
-        const msg = evt.data;
-        if (msg.startsWith("T:")) {
-          const parts = msg.substring(2).split(',');
-          const rpm = parseInt(parts[0]) || 0;
-          const cut = parts[1] === "1";
-          const lState = parts.length > 2 ? parseInt(parts[2]) : 0;
-
-          setGaugeRpm(rpm);
-
-          if (cut) {
-            statusBadge.className = "status-pill spark-cut";
-            statusText.innerText = "TILTÁS AKTÍV";
-            sparkAlert.classList.add('active');
-          } else {
-            statusBadge.className = "status-pill connected";
-            statusText.innerText = "KAPCSOLÓDVA";
-            sparkAlert.classList.remove('active');
-          }
-
-          if (launchMode === 'handsfree') {
-            if (lState !== currentLaunchState) {
-              currentLaunchState = lState;
-              updateButtonUI();
-              if (lState === 3 && navigator.vibrate) {
-                navigator.vibrate([80, 40, 120]);
-              }
-            }
-          }
-        } else if (msg.startsWith("CFG:")) {
-          const c = JSON.parse(msg.substring(4));
-          document.getElementById('cfgArmed').checked = c.armed;
-          document.getElementById('cfgLaunch').value = c.launchRpm;
-          document.getElementById('cfgRedline').value = c.redlineRpm;
-          document.getElementById('cfgDecel').value = c.decelRpm;
-          document.getElementById('cfgDecelPops').checked = c.decelPops;
-          if (c.maxCutSeconds <= 0.05 || c.maxCutSeconds >= 6.0) {
-            document.getElementById('cfgTimeout').value = 6.0;
-          } else {
-            document.getElementById('cfgTimeout').value = c.maxCutSeconds;
-          }
-          if (c.ghostCam !== undefined) {
-            document.getElementById('cfgGhostCam').checked = !!c.ghostCam;
-          }
-          setPattern(c.cutPattern, false);
-          updateSliders();
-        }
-      };
-    }
-
-    function updateSliders() {
-      const launch = parseInt(document.getElementById('cfgLaunch').value);
-      const redline = parseInt(document.getElementById('cfgRedline').value);
-      const decel = parseInt(document.getElementById('cfgDecel').value);
-      const timeout = parseFloat(document.getElementById('cfgTimeout').value);
-
-      document.getElementById('valLaunch').innerText = launch + " RPM";
-      document.getElementById('valRedline').innerText = redline + " RPM";
-      document.getElementById('valDecel').innerText = decel + " RPM";
-      if (timeout >= 6.0) {
-        document.getElementById('valTimeout').innerText = "NINCS LIMIT (∞)";
-        document.getElementById('valTimeout').style.color = "var(--neon-red)";
-      } else {
-        document.getElementById('valTimeout').innerText = timeout.toFixed(1) + " s";
-        document.getElementById('valTimeout').style.color = "var(--neon-amber)";
-      }
-
-      // Synchronize glowing markers on the tachometer dial!
-      updateMarker(launchMarker, launch);
-      updateMarker(redlineMarker, redline);
-    }
-
-    function stepSlider(id, delta) {
-      const el = document.getElementById(id);
-      let val = parseInt(el.value) + delta;
-      const min = parseInt(el.min);
-      const max = parseInt(el.max);
-      if (val < min) val = min;
-      if (val > max) val = max;
-      el.value = val;
-      updateSliders();
-      sendConfig();
-    }
-
-    function setPattern(idx, send = true) {
-      currentPattern = idx;
-      patternDisplay.innerText = patternNames[idx] || "EGYEDI";
-      for (let i = 0; i < 5; i++) {
-        const el = document.getElementById('pat' + i);
-        if (el) {
-          const baseClass = (i === 4) ? 'pattern-card span-2' : 'pattern-card';
-          el.className = baseClass + (i === idx ? ' active' : '');
-        }
-      }
-      if (send) sendConfig();
-    }
-
-    function sendConfig() {
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        const timeoutRaw = parseFloat(document.getElementById('cfgTimeout').value);
-        const effectiveTimeout = (timeoutRaw >= 6.0) ? 0.0 : timeoutRaw;
-        const payload = "SET_CFG:" + JSON.stringify({
-          armed: document.getElementById('cfgArmed').checked,
-          launchRpm: parseInt(document.getElementById('cfgLaunch').value),
-          redlineRpm: parseInt(document.getElementById('cfgRedline').value),
-          decelRpm: parseInt(document.getElementById('cfgDecel').value),
-          decelPops: document.getElementById('cfgDecelPops').checked,
-          cutPattern: currentPattern,
-          maxCutSeconds: effectiveTimeout,
-          ghostCam: document.getElementById('cfgGhostCam').checked
-        });
-        ws.send(payload);
-      }
-    }
-
-    function saveToFlash() {
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send("SAVE_FLASH");
-        showToast("BEÁLLÍTÁSOK ELMENTVE A FLASH-BE!");
-      }
-    }
-
-    function restoreDefaults() {
-      document.getElementById('cfgArmed').checked = true;
-      document.getElementById('cfgLaunch').value = 3800;
-      document.getElementById('cfgRedline').value = 6200;
-      document.getElementById('cfgDecel').value = 3200;
-      document.getElementById('cfgDecelPops').checked = true;
-      document.getElementById('cfgTimeout').value = 3.0;
-      document.getElementById('cfgGhostCam').checked = false;
-      setPattern(1, false);
-      updateSliders();
-      sendConfig();
-      saveToFlash();
-      showToast("AJÁNLOTT ÉRTÉKEK VISSZAÁLLÍTVA!");
-    }
-
-    // High-speed touch & click handling with haptics
-    function handleBtnInteraction(isDown) {
-      if (launchMode === 'show') {
-        if (isDown) {
-          btnTwoStep.classList.add('pressed');
-          if (navigator.vibrate) navigator.vibrate([40, 30, 40]);
-          if (ws && ws.readyState === WebSocket.OPEN) ws.send("BTN:1");
-        } else {
-          btnTwoStep.classList.remove('pressed');
-          if (ws && ws.readyState === WebSocket.OPEN) ws.send("BTN:0");
-        }
-      } else {
-        // Hands-Free mode: tap to toggle ARM / DISARM
-        if (isDown) {
-          if (navigator.vibrate) navigator.vibrate(50);
-          if (currentLaunchState === 0) {
-            currentLaunchState = 1;
-            if (ws && ws.readyState === WebSocket.OPEN) ws.send("LAUNCH:ARM");
-            showToast("RAJTAUTOMATIKA ÉLESÍTVE! (10 MP)");
-          } else {
-            currentLaunchState = 0;
-            if (ws && ws.readyState === WebSocket.OPEN) ws.send("LAUNCH:DISARM");
-            showToast("ÉLESÍTÉS TÖRÖLVE!");
-          }
-          updateButtonUI();
-        }
-      }
-    }
-
-    btnTwoStep.addEventListener('touchstart', (e) => { e.preventDefault(); handleBtnInteraction(true); });
-    btnTwoStep.addEventListener('touchend', (e) => { e.preventDefault(); if (launchMode === 'show') handleBtnInteraction(false); });
-    btnTwoStep.addEventListener('touchcancel', (e) => { e.preventDefault(); if (launchMode === 'show') handleBtnInteraction(false); });
-    btnTwoStep.addEventListener('mousedown', (e) => { handleBtnInteraction(true); });
-    window.addEventListener('mouseup', () => { if (launchMode === 'show') handleBtnInteraction(false); });
-
-    
-    // Offline Demo Simulation for Browser Testing
-    let simStateTimer = 0;
-    setInterval(() => {
-      if (!isConnected) {
-        let simRpm = 850;
-        const now = Date.now();
-
-        if (launchMode === 'show') {
-          if (btnTwoStep.classList.contains('pressed')) {
-            const launch = parseInt(document.getElementById('cfgLaunch').value) || 3800;
-            simRpm = Math.floor(launch - 120 + Math.random() * 240);
-            sparkAlert.classList.add('active');
-            statusBadge.className = 'status-pill spark-cut';
-            statusText.innerText = 'TILTÁS AKTÍV';
-          } else {
-            sparkAlert.classList.remove('active');
-            statusBadge.className = 'status-pill connected';
-            statusText.innerText = 'SZIMULÁCIÓ';
-            simRpm = Math.floor(880 + Math.sin(now / 1200) * 40 + (Math.random() - 0.5) * 20);
-          }
-        } else {
-          // Hands-Free Launch Demo Simulation
-          if (currentLaunchState === 1) { // ARMED
-            simRpm = Math.floor(880 + Math.sin(now / 1200) * 40);
-            sparkAlert.classList.remove('active');
-            statusBadge.className = 'status-pill connected';
-            statusText.innerText = 'KÉSZENLÉT (ARMED)';
-            simStateTimer++;
-            if (simStateTimer > 30) { // after ~1.5s, driver steps on throttle
-              currentLaunchState = 2;
-              simStateTimer = 0;
-              updateButtonUI();
-            }
-          } else if (currentLaunchState === 2) { // HOLDING
-            const launch = parseInt(document.getElementById('cfgLaunch').value) || 3800;
-            simRpm = Math.floor(launch - 100 + Math.random() * 200);
-            sparkAlert.classList.add('active');
-            statusBadge.className = 'status-pill spark-cut';
-            statusText.innerText = 'TILTÁS AKTÍV';
-            simStateTimer++;
-            if (simStateTimer > 50) { // after 2.5s, clutch dropped!
-              currentLaunchState = 3;
-              simStateTimer = 0;
-              updateButtonUI();
-            }
-          } else if (currentLaunchState === 3) { // FIRED
-            simRpm = Math.min(6200, 3600 + simStateTimer * 70);
-            sparkAlert.classList.remove('active');
-            statusBadge.className = 'status-pill connected';
-            statusText.innerText = 'KILÖVÉS (FIRED)';
-            simStateTimer++;
-            if (simStateTimer > 40) { // after 2s
-              currentLaunchState = 0;
-              simStateTimer = 0;
-              updateButtonUI();
-            }
-          } else {
-            // Idle
-            simStateTimer = 0;
-            if (document.getElementById('cfgGhostCam').checked) {
-              const phase = Math.sin(now / 280);
-              simRpm = Math.floor(820 + phase * 220 + (Math.random() - 0.5) * 60);
-            } else {
-              simRpm = Math.floor(880 + Math.sin(now / 1500) * 50 + (Math.random() - 0.5) * 20);
-            }
-            sparkAlert.classList.remove('active');
-            statusBadge.className = 'status-pill connected';
-            statusText.innerText = 'SZIMULÁCIÓ';
-          }
-        }
-
-        setGaugeRpm(simRpm);
-      }
-    }, 50);
-
-    // Wireless OTA Firmware Update
-    let selectedOtaFile = null;
-
-    function handleOtaFileSelect(e) {
-      const file = e.target.files[0];
-      if (!file) return;
-      if (!file.name.endsWith('.bin')) {
-        alert("Kérlek csak lefordított .bin fájlt válassz ki!");
-        e.target.value = '';
-        return;
-      }
-      selectedOtaFile = file;
-      const fNameEl = document.getElementById('otaFileName');
-      const sizeKb = (file.size / 1024).toFixed(1);
-      fNameEl.innerText = file.name + " (" + sizeKb + " KB)";
-      fNameEl.style.color = "var(--neon-green)";
-      document.getElementById('otaUploadBtn').style.display = 'flex';
-    }
-
-    function startOtaUpload() {
-      if (!selectedOtaFile) {
-        alert("Előbb válassz ki egy firmware .bin fájlt!");
-        return;
-      }
-
-      if (!confirm("Biztosan elindítod a vezeték nélküli frissítést?\nA feltöltés kb. 15-20 másodperc. Ne zárd be a böngészőt!")) {
-        return;
-      }
-
-      const upBtn = document.getElementById('otaUploadBtn');
-      const pickBtn = document.querySelector('.ota-pick-btn');
-      const progressBox = document.getElementById('otaProgressBox');
-      const progressFill = document.getElementById('otaProgressFill');
-      const progressLbl = document.getElementById('otaProgressLbl');
-
-      upBtn.style.display = 'none';
-      if (pickBtn) pickBtn.style.display = 'none';
-      progressBox.style.display = 'block';
-      progressFill.style.width = '0%';
-      progressLbl.innerText = 'Feltöltés: 0%';
-
-      // If running in browser preview without live ESP32 connection, demonstrate simulated upload!
-      if (!window.location.hostname || window.location.hostname === "" || window.location.protocol === "file:") {
-        let p = 0;
-        const simUp = setInterval(() => {
-          p += 5;
-          if (p <= 100) {
-            progressFill.style.width = p + '%';
-            progressLbl.innerText = 'Feltöltés: ' + p + '%';
-          } else {
-            clearInterval(simUp);
-            progressFill.style.background = 'var(--neon-green)';
-            progressLbl.innerText = 'SIKERES! (DEMÓ ÚJRAINDÍTÁS)';
-            showToast('FIRMWARE FRISSÍTVE! (SZIMULÁCIÓ)');
-            setTimeout(() => {
-              progressBox.style.display = 'none';
-              upBtn.style.display = 'none';
-              if (pickBtn) pickBtn.style.display = 'flex';
-              document.getElementById('otaFileName').innerText = 'Nincs fájl kiválasztva';
-              document.getElementById('otaFileName').style.color = 'var(--text-muted)';
-            }, 3000);
-          }
-        }, 100);
-        return;
-      }
-
-      const formData = new FormData();
-      formData.append('update', selectedOtaFile, selectedOtaFile.name);
-
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', '/update', true);
-
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) {
-          const percent = Math.round((e.loaded / e.total) * 100);
-          progressFill.style.width = percent + '%';
-          progressLbl.innerText = 'Feltöltés: ' + percent + '%';
-        }
-      };
-
-      xhr.onload = () => {
-        if (xhr.status === 200) {
-          progressFill.style.width = '100%';
-          progressFill.style.background = 'var(--neon-green)';
-          progressLbl.innerText = 'SIKERES! ÚJRAINDÍTÁS...';
-          showToast('FIRMWARE FRISSÍTVE! ÚJRAINDULÁS...');
-          setTimeout(() => {
-            progressLbl.innerText = 'ÚJRACSATLAKOZÁS...';
-            setTimeout(() => {
-              window.location.reload();
-            }, 4000);
-          }, 3000);
-        } else {
-          progressFill.style.background = 'var(--neon-red)';
-          progressLbl.innerText = 'HIBA: ' + xhr.responseText;
-          alert('Frissítési hiba: ' + xhr.responseText);
-          upBtn.style.display = 'flex';
-          if (pickBtn) pickBtn.style.display = 'flex';
-        }
-      };
-
-      xhr.onerror = () => {
-        progressFill.style.background = 'var(--neon-red)';
-        progressLbl.innerText = 'KAPCSOLATI HIBA!';
-        alert('Hálózati hiba a frissítés során. Kérlek ellenőrizd a Wi-Fi kapcsolatot!');
-        upBtn.style.display = 'flex';
-        if (pickBtn) pickBtn.style.display = 'flex';
-      };
-
-      xhr.send(formData);
-    }
-
-    window.onload = () => {
-      buildGaugeTicks();
-      updateSliders();
-      updateButtonUI();
-      connectWS();
-      if (!window.location.hostname || window.location.hostname === "") {
-        runStartupSweep();
-      }
+  };
+}
+const p1 = otaUi('p1Status'), p2 = otaUi('p2Status'), p3 = otaUi('p3Status');
+function setBusy(on) {
+  FW.busy = on;
+  ['p1Check', 'p1Install', 'p3Install'].forEach(id => { $(id).disabled = on; });
+}
+// Browser upload to POST /update (multipart field "update"); ?md5= lets the ESP verify the image
+function flashBlob(blob, md5, ui) {
+  if (DEMO) return sim.upload(blob, ui);
+  return new Promise((resolve, reject) => {
+    suspendWS(true);
+    let sentAll = false;
+    const fd = new FormData();
+    fd.append('update', blob, 'firmware.bin');
+    const x = new XMLHttpRequest();
+    x.open('POST', '/update' + (/^[0-9a-f]{32}$/i.test(md5 || '') ? '?md5=' + md5.toLowerCase() : ''));
+    x.timeout = 180000;
+    x.upload.onprogress = e => { if (e.lengthComputable) { sentAll = e.loaded >= e.total; ui.progress('Feltöltés a vezérlőre', e.loaded, e.total); } };
+    x.onload = () => {
+      if (x.status === 200) { ui.set('Feltöltve – a vezérlő újraindul…', 'ok', 100); resolve(); return; }
+      suspendWS(false);
+      const t = (x.responseText || '').trim().slice(0, 200);
+      reject(new Error(x.status === 409
+        ? 'A vezérlő most nem frissíthető' + (t ? ': ' + t : '') + '. Állítsd le a motort (vagy hagyd alapjáraton), és próbáld újra.'
+        : 'A vezérlő elutasította a frissítést (HTTP ' + x.status + (t ? ': ' + t : '') + '). A régi firmware megmaradt.'));
     };
-  </script>
+    x.onerror = x.ontimeout = () => {
+      if (sentAll) { resolve(); return; }   // the reboot can cut the reply short: the version check decides
+      suspendWS(false);
+      reject(new Error('Megszakadt a kapcsolat feltöltés közben. Ellenőrizd, hogy a telefon a Swift-PopsAndBangs Wi-Fi-n van, és próbáld újra – a régi firmware addig megmarad.'));
+    };
+    x.send(fd);
+  });
+}
+// After flashing: wait for the reboot, then confirm the running version via /api/info
+async function waitForVersion(expect, ui) {
+  const t0 = Date.now();
+  ui.set('Újraindulás – várakozás a vezérlőre…', 'info');
+  await sleep(4000);
+  while (Date.now() - t0 < 90000) {
+    const i = await refreshInfo();
+    if (i) {
+      if (!expect || (+i.code || verCode(i.fw)) >= expect) {
+        ui.set('✔ Sikeres frissítés – most a v' + i.fw + ' fut.' + (DEMO ? '' : ' Az oldal újratöltődik…'), 'ok', 100);
+        toast('✔ Firmware frissítve: v' + i.fw);
+        vibrate([60, 40, 60]);
+        suspendWS(false);
+        if (!DEMO) { FW.reloading = true; setTimeout(() => location.reload(), 2500); }
+        return;
+      }
+      if (Date.now() - t0 > 12000) {
+        suspendWS(false);
+        throw new Error('A vezérlő újraindult, de még a v' + i.fw + ' fut – az új firmware nem aktiválódott. Próbáld újra.');
+      }
+    }
+    ui.set('Újraindulás – várakozás a vezérlőre… (' + Math.round((Date.now() - t0) / 1000) + ' s)', 'info');
+    await sleep(1500);
+  }
+  suspendWS(false);
+  throw new Error('A vezérlő 90 mp alatt nem jelentkezett. Csatlakozz újra a Swift-PopsAndBangs Wi-Fi-hez, és töltsd újra az oldalt.');
+}
+
+// Path 1: the phone downloads from GitHub (mobile data), then uploads to the ESP.
+// Public repo, anonymous: raw.githubusercontent.com sends Access-Control-Allow-Origin: *
+const OTHER_WAYS = ' Használd a „Frissítés Wi-Fi-n” módot (az ESP tölti le), vagy a kézi feltöltést.';
+async function ghFetch(path, timeout) {
+  if (DEMO) return sim.gh(path);
+  const branchPath = FW.branch.split('/').map(encodeURIComponent).join('/');
+  const url = 'https://raw.githubusercontent.com/' + FW.repo + '/' + branchPath + '/' + path + '?t=' + Date.now();
+  const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), timeout);
+  let r;
+  try { r = await fetch(url, { cache: 'no-store', signal: ctl.signal }); }
+  catch (e) {
+    throw new Error((ctl.signal.aborted
+      ? 'A GitHub nem válaszolt időben – lassú vagy nincs mobilnet.'
+      : 'Nem érem el a GitHubot: a telefonon nincs mobilnet, vagy az autó Wi-Fi-je mellett nem használja. Androidon kapcsold be a mobilnetet, és ha a telefon rákérdez, maradj a Wi-Fi-n internet nélkül; iPhone-on ez többnyire nem megy.') + OTHER_WAYS);
+  } finally { clearTimeout(tm); }
+  if (r.ok) return r;
+  const where = ' (' + FW.repo + ', ág: ' + FW.branch + ')';
+  if (r.status === 404) throw new Error('A ' + path + ' nem található, vagy a tároló nem elérhető' + where + '. Ellenőrizd a tároló és az ág nevét (Wi-Fi-s frissítés → Haladó).');
+  throw new Error('A GitHub most nem elérhető (HTTP ' + r.status + ')' + where + '. Próbáld újra pár perc múlva.' + OTHER_WAYS);
+}
+async function phoneCheck() {
+  if (FW.busy) return;
+  setBusy(true);
+  $('p1Install').hidden = true;
+  p1.set('Verzió lekérdezése a GitHubról…', 'info');
+  try {
+    await refreshInfo();
+    const r = await ghFetch('version.json', 15000);
+    let m;
+    try { m = JSON.parse(await r.text()); } catch (e) { throw new Error('A version.json hibás (nem JSON).'); }
+    if (!m || !m.version || !(+m.code > 0)) throw new Error('A version.json hiányos (version / code).');
+    m.code = +m.code;
+    FW.manifest = m;
+    const newer = !FW.code || m.code > FW.code;
+    if (!FW.code) p1.set('A GitHubon a v' + m.version + ' (' + kb(m.size) + ') érhető el; a vezérlő verziója nem ismert.', 'go');
+    else if (newer) p1.set('Új verzió elérhető: v' + m.version + ' (' + kb(m.size) + ') – most: v' + FW.fw, 'go');
+    else if (m.code === FW.code) p1.set('✔ Naprakész – a legújabb v' + m.version + ' fut.', 'ok');
+    else p1.set('A vezérlőn újabb (v' + FW.fw + ') fut, mint a GitHubon (v' + m.version + ').', 'ok');
+    $('p1Install').hidden = !newer;
+    txt('p1Install', '⬇ TELEPÍTÉS: v' + m.version);
+  } catch (e) { p1.set(e.message, 'err'); }
+  setBusy(false);
+}
+async function downloadFirmware(m) {
+  const r = await ghFetch('firmware.bin', 20000);
+  const total = +m.size || parseInt(r.headers.get('content-length'), 10) || 0;
+  const rd = r.body.getReader(), parts = [];
+  let got = 0;
+  for (;;) {
+    let stall;
+    const chunk = await Promise.race([rd.read(), new Promise((_, rej) => { stall = setTimeout(() => rej(new Error('Elakadt a letöltés (20 mp óta nem jön adat). Próbáld újra.')), 20000); })])
+      .finally(() => clearTimeout(stall))
+      .catch(e => { rd.cancel().catch(() => {}); throw e; });
+    if (chunk.done) break;
+    parts.push(chunk.value);
+    got += chunk.value.length;
+    p1.progress('Letöltés a GitHubról', got, total);
+  }
+  const data = new Uint8Array(got);
+  let o = 0;
+  for (const p of parts) { data.set(p, o); o += p.length; }
+  if (+m.size && data.length !== +m.size) throw new Error('A letöltött fájl mérete (' + data.length + ' B) eltér a várttól (' + m.size + ' B). Próbáld újra.');
+  if (data[0] !== 0xE9) throw new Error('A letöltött fájl nem érvényes ESP32 firmware. Próbáld újra később.');
+  return new Blob([data], { type: 'application/octet-stream' });
+}
+async function phoneInstall() {
+  const m = FW.manifest;
+  if (!m || FW.busy) return;
+  if (!confirm('Telepíted a v' + m.version + ' firmware-t?\nA telefon letölti (' + kb(m.size) + '), és feltölti a vezérlőre, ami utána újraindul.\n\nÁlló motornál frissíts, és ne zárd be az oldalt.')) return;
+  setBusy(true);
+  try {
+    await flashBlob(await downloadFirmware(m), m.md5, p1);
+    await waitForVersion(+m.code, p1);
+    $('p1Install').hidden = true;
+  } catch (e) { p1.set(e.message, 'err'); }
+  setBusy(false);
+}
+
+// Path 2: the ESP joins an internet Wi-Fi and downloads by itself; the page polls the status
+const OTA_LABEL = { idle: 'Tétlen', connecting: 'Csatlakozás a Wi-Fi-hez…', checking: 'Verzió ellenőrzése…', available: 'Új verzió elérhető', uptodate: 'Naprakész', downloading: 'Letöltés…', flashing: 'Írás a flash-be…', done: 'Kész – újraindulás…', error: 'Hiba' };
+const OTA_BUSY = ['connecting', 'checking', 'downloading', 'flashing'];
+const poll = { on: false, timer: 0, fails: 0, wasBusy: false, expect: 0, waiting: false };
+
+async function espSaveCfg() {
+  const i = FW.info || {}, p = new URLSearchParams();
+  const ssid = $('staSsid').value.trim(), pass = $('staPass').value;
+  const repo = $('espRepo').value.trim(), branch = $('espBranch').value.trim(), auto = $('espAuto').checked;
+  if (ssid !== (i.staSsid || '') || pass) p.set('ssid', ssid);
+  if (pass) p.set('pass', pass);
+  if (repo && repo !== i.repo) {
+    if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) { toast('A tároló formátuma: felhasználó/név', 'err'); return; }
+    p.set('repo', repo);
+  }
+  if (branch && branch !== i.branch) p.set('branch', branch);
+  if (auto !== !!i.autoCheck) p.set('autoCheck', auto ? '1' : '0');
+  if (![...p.keys()].length) { toast('Nincs mit menteni – nem változott semmi', 'warn'); return; }
+  try {
+    const r = await api('/api/ota/config', { method: 'POST', body: p.toString(), timeout: 5000 });
+    if (r && r.ok === false) throw new Error(r.msg || 'A vezérlő elutasította a beállításokat.');
+    ['staSsid', 'espRepo', 'espBranch', 'espAuto'].forEach(id => delete $(id).dataset.edited);
+    $('staPass').value = '';
+    toast('✔ Frissítési beállítások elmentve');
+    refreshInfo();
+  } catch (e) { toast(e.message, 'err'); }
+}
+async function espAction(kind) {
+  if (kind === 'install' && !confirm('Az ESP letölti és telepíti az új firmware-t, majd újraindul (1–2 perc).\n\nKözben a telefon lecsatlakozhat az autó Wi-Fi-jéről – ez normális; ha nem jön vissza magától, csatlakozz újra.\n\nÁlló motornál frissíts. Indulhat?')) return;
+  try {
+    const r = await api('/api/ota/' + kind, { method: 'POST', body: '', timeout: 6000 });
+    if (r && r.ok === false) throw new Error(r.msg || 'A vezérlő elutasította a kérést.');
+    if (kind !== 'cancel') p2.set(kind === 'install' ? 'Telepítés indul…' : 'Ellenőrzés indul…', 'info');
+  } catch (e) {
+    // the ESP may switch Wi-Fi channel right away and the reply gets lost: keep watching the status
+    if (!e.net) { p2.set(e.message, 'err'); return; }
+    p2.set('A kérés elment, de nem jött válasz – figyelem az állapotot…', 'warn');
+  }
+  pollStart();
+}
+function pollStart() {
+  if (poll.on) return;
+  poll.on = true;
+  pollTick();
+}
+async function pollTick() {
+  clearTimeout(poll.timer);
+  let s = null;
+  try { s = await api('/api/ota/status', { timeout: 2500 }); poll.fails = 0; }
+  catch (e) { poll.fails++; }
+  if (s) renderOta(s);
+  else if (poll.fails > 1) p2.set('⚠ Nincs kapcsolat a vezérlővel. Ha az ESP épp a másik Wi-Fi-hez csatlakozik, a telefon lecsatlakozhatott – várok és újrapróbálom… (' + poll.fails + ')', 'warn');
+  const busy = s ? OTA_BUSY.includes(s.state) : poll.wasBusy;
+  if (poll.waiting || (!busy && !($('grpFw').open && $('p2Box').open))) { poll.on = false; return; }
+  poll.timer = setTimeout(pollTick, s ? 1000 : 2000);
+}
+function renderOta(s) {
+  const st = s.state || 'idle', busy = OTA_BUSY.includes(st);
+  let t = st === 'available' && s.latest ? 'Új verzió elérhető: v' + s.latest + (s.current ? ' (most: v' + s.current + ')' : '') : OTA_LABEL[st] || st;
+  if (s.msg) t += ' – ' + s.msg;
+  if (s.staIp && busy) t += ' • ESP IP: ' + s.staIp;
+  const pct = st === 'downloading' || st === 'flashing' ? Math.max(0, Math.min(100, s.progress | 0)) : null;
+  p2.set(t, st === 'error' ? 'err' : st === 'uptodate' ? 'ok' : st === 'available' || st === 'done' ? 'go' : 'info', pct);
+  $('p2Install').disabled = st !== 'available';
+  $('p2Check').disabled = busy;
+  $('p2Cancel').hidden = !busy;
+  if (s.latestCode) poll.expect = +s.latestCode;
+  if (pct !== null) poll.wasBusy = true;
+  // done, or the ESP rebooted into the new version while the phone was away
+  const finished = st === 'done' || (poll.wasBusy && !busy && poll.expect > 0 && verCode(s.current) >= poll.expect);
+  if (!finished && !busy) poll.wasBusy = false;   // cancelled, failed or idle
+  if (finished && !poll.waiting) {
+    poll.waiting = true;
+    poll.wasBusy = false;
+    waitForVersion(poll.expect, p2).catch(e => p2.set(e.message, 'err')).finally(() => { poll.waiting = false; });
+  }
+}
+
+// Path 3: manual .bin upload
+let pickedFile = null;
+async function pickFile(inp) {
+  const f = inp.files && inp.files[0], nm = $('p3Name');
+  inp.value = '';
+  pickedFile = null;
+  $('p3Install').hidden = true;
+  if (!f) return;
+  let ok = /\.bin$/i.test(f.name);
+  if (ok) { try { ok = new Uint8Array(await f.slice(0, 1).arrayBuffer())[0] === 0xE9; } catch (e) {} }
+  nm.className = 'hint center ' + (ok ? 'good' : 'bad');
+  if (!ok) { nm.textContent = '✕ ' + f.name + ' – ez nem ESP32 firmware (.bin) fájl.'; return; }
+  pickedFile = f;
+  nm.textContent = '✔ ' + f.name + ' (' + kb(f.size) + ')';
+  $('p3Install').hidden = false;
+}
+async function fileInstall() {
+  if (!pickedFile || FW.busy) return;
+  if (!confirm('Feltöltöd és telepíted: ' + pickedFile.name + '?\nA vezérlő utána újraindul. Álló motornál frissíts, és ne zárd be az oldalt.')) return;
+  setBusy(true);
+  try { await flashBlob(pickedFile, '', p3); await waitForVersion(0, p3); }
+  catch (e) { p3.set(e.message, 'err'); }
+  setBusy(false);
+}
+
+// ---- Help modal
+function openModal() { $('infoModal').classList.add('open'); $('infoModal').setAttribute('aria-hidden', 'false'); }
+function closeModal() { $('infoModal').classList.remove('open'); $('infoModal').setAttribute('aria-hidden', 'true'); }
+$('infoModal').addEventListener('click', e => { if (e.target === $('infoModal')) closeModal(); });
+window.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+// ---- Demo mode (file:// or ?demo=1): simulated engine, firmware and HTTP API; no network
+const sim = DEMO ? makeSim() : null;
+function makeSim() {
+  const s = {
+    online: true, cfg: Object.assign({}, CFG_DEF), rpm: 850, gas: false, btn: false, btnAt: 0, thr: false, liftAt: 0,
+    ls: 0, armAt: 0, holdAt: 0, firedAt: 0, cutStart: 0, job: 0, pending: null, next: { fw: '2.1.0', code: 20100 },
+    info: { fw: '2.0.0', code: 20000, built: '2026-09-24T12:00:00Z', heap: 180000, repo: DEF_REPO, branch: 'main', staSsid: '', autoCheck: false },
+    ota: { state: 'idle', progress: 0, msg: '', current: '2.0.0' }
+  };
+  s.recv = m => {
+    const now = Date.now();
+    if (m === 'BTN:1') { s.btn = true; s.btnAt = now; }
+    else if (m === 'BTN:0') s.btn = false;
+    else if (m === 'LAUNCH:ARM') { s.ls = 1; s.armAt = now; }
+    else if (m === 'LAUNCH:DISARM') s.ls = 0;
+    else if (m === 'GET_CONFIG') setTimeout(() => onMessage('CFG:' + JSON.stringify(Object.assign({ fw: s.info.fw }, s.cfg))), 60);
+    else if (m.startsWith('SET_CFG:')) Object.assign(s.cfg, JSON.parse(m.slice(8)));
+    else if (m === 'SAVE_FLASH') setTimeout(() => onMessage('ACK:SAVED'), 300);
+  };
+  // ~30 Hz engine model: launch states, cut priority and anti-flood like the firmware
+  s.tick = () => {
+    if (!s.online) return;
+    const now = Date.now(), c = s.cfg;
+    if (s.btn && now - s.btnAt > 600) s.btn = false;   // dead-man, like the firmware
+    // the demo driver floors it when armed, drops the clutch after ~2.5 s, lifts after the launch
+    const clutch = s.ls === 2 && now - s.holdAt > Math.min(2500, (c.maxCutSeconds || 9) * 1000 - 600);
+    const thr = s.gas || s.btn || s.ls === 2 || (s.ls === 1 && now - s.armAt > 1200) || (s.ls === 3 && now - s.firedAt < 1800);
+    if (s.thr && !thr) s.liftAt = now;
+    s.thr = thr;
+    const idle = c.ghostCam ? 900 + Math.sin(now / 230) * 150 : 850 + Math.sin(now / 1500) * 30;
+    s.rpm = clutch ? s.rpm - 260 : thr ? s.rpm + 110 + Math.random() * 70 : Math.max(idle, s.rpm - 120);
+    if (s.ls === 1) { if (now - s.armAt > 10000) s.ls = 0; else if (s.rpm >= c.launchRpm - 200) { s.ls = 2; s.holdAt = now; } }
+    else if (s.ls === 2) {
+      if (now - s.holdAt >= 400 && s.rpm < c.launchRpm - c.launchDrop) { s.ls = 3; s.firedAt = now; }
+      else if (c.maxCutSeconds > 0 && now - s.holdAt > c.maxCutSeconds * 1000) s.ls = 0;
+    } else if (s.ls === 3 && now - s.firedAt > 2000) s.ls = 0;
+    let want = 0;
+    if (c.armed) {
+      if ((s.btn || s.ls === 2) && s.rpm >= c.launchRpm) want = s.btn ? 1 : 2;
+      else if (s.rpm >= c.redlineRpm) want = 4;
+      else if (c.decelPops && !thr && s.rpm >= c.decelRpm && now - s.liftAt < 1200) want = 5;
+      else if (c.ghostCam && !thr && s.rpm < 1300 && now % 700 < 90) want = 6;
+    }
+    if (!want || want === 6) s.cutStart = 0; else if (!s.cutStart) s.cutStart = now;
+    const lock = s.cutStart && c.maxCutSeconds > 0 && now - s.cutStart > c.maxCutSeconds * 1000;
+    const lim = want === 4 ? c.redlineRpm : want && want < 3 ? c.launchRpm : 0;
+    if (lim && !lock && s.rpm > lim) s.rpm = lim - 60 - Math.random() * 220;
+    s.rpm = Math.max(0, Math.min(MAX_RPM, s.rpm + (Math.random() - 0.5) * 24));
+    onMessage('T:' + Math.round(s.rpm) + ',' + (want ? 1 : 0) + ',' + s.ls + ',' + (s.ls === 1 ? Math.max(0, 10000 - (now - s.armAt)) : 0) + ',' + (lock ? 8 : want));
+  };
+  s.reboot = t => {
+    s.online = false;
+    linkDown();
+    setTimeout(() => {
+      Object.assign(s.info, { fw: t.fw, code: t.code });
+      s.ota = { state: 'idle', progress: 0, msg: '', current: t.fw };
+      s.ls = 0; s.btn = false; s.online = true;
+      linkUp();
+    }, 5000);
+  };
+  const step = (state, msg, progress) => Object.assign(s.ota, { state, msg, progress: progress || 0 });
+  s.run = async install => {
+    const job = ++s.job, wait = async ms => { await sleep(ms); if (job !== s.job) throw 0; };
+    step('connecting', s.info.staSsid);
+    await wait(1500);
+    s.ota.staIp = '192.168.1.50';
+    if (!install) {
+      step('checking', '');
+      await wait(1200);
+      Object.assign(s.ota, { latest: s.next.fw, latestCode: s.next.code, current: s.info.fw });
+      step(s.next.code > s.info.code ? 'available' : 'uptodate', '');
+      return;
+    }
+    for (let p = 0; p <= 100; p += 4) { step('downloading', '', p); await wait(160); }
+    step('flashing', '', 100);
+    await wait(1200);
+    step('done', '', 100);
+    await wait(2500);
+    s.reboot(s.next);
+  };
+  s.api = async (path, o) => {
+    await sleep(150 + Math.random() * 150);
+    if (!s.online) { const e = new Error('Nem érem el a vezérlőt (hálózati hiba).'); e.net = true; throw e; }
+    const p = new URLSearchParams(o.body || ''), bad = msg => ({ ok: false, msg });
+    switch (path) {
+      case '/api/info': return Object.assign({}, s.info, { rpm: Math.round(s.rpm), heap: 176000 + (Math.random() * 6000 | 0) });
+      case '/api/ota/status': return Object.assign({}, s.ota);
+      case '/api/ota/config':
+        ['staSsid:ssid', 'repo:repo', 'branch:branch'].forEach(k => { const [to, from] = k.split(':'); if (p.has(from)) s.info[to] = p.get(from); });
+        if (p.has('autoCheck')) s.info.autoCheck = p.get('autoCheck') === '1';
+        return { ok: true };
+      case '/api/ota/check':
+        if (!s.info.staSsid) return bad('Nincs mentett Wi-Fi hálózat.');
+        s.run(false).catch(() => {}); return { ok: true };
+      case '/api/ota/install':
+        if (s.ota.state !== 'available') return bad('Előbb futtass ellenőrzést.');
+        s.run(true).catch(() => {}); return { ok: true };
+      case '/api/ota/cancel': s.job++; step('idle', 'Megszakítva.'); return { ok: true };
+    }
+    throw new Error('HTTP 404');
+  };
+  // GitHub mock: manifest, then a streamed fake image that starts with 0xE9
+  s.gh = async path => {
+    await sleep(500);
+    if (path === 'version.json') return new Response(JSON.stringify({ version: s.next.fw, code: s.next.code, size: 880000, md5: '0123456789abcdef0123456789abcdef', built: '2026-09-24T12:00:00Z' }));
+    let sent = 0;
+    s.pending = s.next;
+    return new Response(new ReadableStream({ async pull(ctl) {
+      await sleep(45);
+      const n = Math.min(32768, 880000 - sent);
+      if (n <= 0) return ctl.close();
+      const b = new Uint8Array(n);
+      b[0] = sent ? 0 : 0xE9;
+      sent += n;
+      ctl.enqueue(b);
+    } }));
+  };
+  s.upload = async (blob, ui) => {
+    for (let p = 0; p <= 100; p += 5) { ui.progress('Feltöltés a vezérlőre', blob.size * p / 100, blob.size); await sleep(90); }
+    ui.set('Feltöltve – a vezérlő újraindul…', 'ok', 100);
+    const t = s.pending || s.info;
+    s.pending = null;
+    setTimeout(() => s.reboot(t), 300);
+  };
+  return s;
+}
+
+// ---- Start
+document.querySelectorAll('[data-track]').forEach(el => el.addEventListener(el.type === 'checkbox' ? 'change' : 'input', () => { el.dataset.edited = '1'; }));
+document.querySelectorAll('details.card').forEach(d => {
+  const saved = store.get('open.' + d.id, null);
+  if (saved !== null) d.open = saved === '1';
+  d.addEventListener('toggle', () => { store.set('open.' + d.id, d.open ? '1' : '0'); if (d.open && (d.id === 'grpFw' || d.id === 'grpSys')) refreshInfo(); });
+});
+$('p2Box').addEventListener('toggle', () => { if ($('p2Box').open) { refreshInfo(); pollStart(); } });
+window.addEventListener('beforeunload', e => { if (isDirty() && !FW.reloading) { e.preventDefault(); e.returnValue = ''; } });
+// Web fonts only after load and never blocking: the car's Wi-Fi has no internet
+window.addEventListener('load', () => setTimeout(() => {
+  const l = document.createElement('link');
+  l.rel = 'stylesheet';
+  l.href = 'https://fonts.googleapis.com/css2?family=Orbitron:wght@700;800;900&family=Rajdhani:wght@600;700&display=swap';
+  document.head.appendChild(l);
+}, 200));
+
+applyCfg(CFG_DEF);
+renderCfg();
+renderSave();
+renderLaunch();
+if (DEMO) {
+  const gas = $('demoGas'), setGas = v => { sim.gas = v; };
+  $('demoBar').hidden = false;
+  gas.addEventListener('pointerdown', e => { e.preventDefault(); setGas(true); try { gas.setPointerCapture(e.pointerId); } catch (x) {} });
+  ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(n => gas.addEventListener(n, () => setGas(false)));
+  setInterval(sim.tick, 33);
+  linkUp();
+} else {
+  setConn('connecting');
+  connectWS();
+}
+</script>
 </body>
 </html>
