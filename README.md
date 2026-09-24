@@ -84,7 +84,16 @@ Lefordítja a firmware-t, és a Windows 10/11 beépített `curl`-jével feltölt
    - Csoportosított, összecsukható beállítások, jelzés a nem mentett változásokról, beépített súgó.
    - Diagnosztika autós teszteléshez: `http://192.168.4.1/api/diag`.
 
-7. **🛡️ Biztonsági Védelem & Memória:**
+7. **📈 Adatnapló (fekete doboz, v2.1):**
+   - A vezérlő magától rögzít, a telefonnak menet közben nem kell csatlakozva lennie. Másodpercenként 25 minta: RPM, tiltás, rajtállapot, mi tilt, elsült és kimaradt szikrák.
+   - **Menetnapló:** a teljes út (~50 perc körkörösen) az ESP32 flash-ében, gyújtáslevétel után is megmarad.
+   - **Eseményfelvételek** szikránkénti részletességgel, pár másodperccel előtte és utána: minden rajt, redline, anti-flood zár, rendellenesség, és a **📌 Mentés most** gomb (utolsó 60 mp).
+   - A dashboard **Adatnapló** kártyáján: lista, grafikon, **CSV letöltés**. A CSV elküldhető elemzésre / hangolásra.
+   - **Kikapcsolható** az Adatnapló kártyán. Kikapcsolva nem ír a flash-be, a meglévő felvételek megmaradnak.
+   - Nem zavarja a gyújtásvezérlést: a flash írás a processzort egy pillanatra megállítja, ezért csak akkor ír, ha éppen nincs tiltás és a fordulat messze van a redline-tól. Szektort törölni csak alapjáraton vagy álló motornál töröl.
+   - Számítógépen: `tools/log/swiftlog.py` (flash dump dekódoló / CSV export).
+
+8. **🛡️ Biztonsági Védelem & Memória:**
    - **Valós idejű vezérlés:** a gyújtásjel-megszakítás és egy 10 kHz-es időzítő végzi a tiltást, így a Wi-Fi, az oldalbetöltés vagy a frissítés sosem akaszthatja meg.
    - **Trafó zavarszűrés:** adaptív zajkapu (min. 3 ms, 10000 RPM-ig mér) a trafó utórezgései ellen.
    - **Szikraelvétel fordulatszám-kompenzáció:** a kimaradt gyújtásokat a vezérlő számon tartja, így a mutatott RPM tiltás alatt sem esik be.
