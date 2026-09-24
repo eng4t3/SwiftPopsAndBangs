@@ -63,6 +63,39 @@ The dashboard treats the connection as dead if no message arrives for 1500 ms an
 | `ghostCam` | bool | | `false` |
 | `launchDrop` | int | 300–1500 (step 50): RPM drop below `launchRpm` that counts as the clutch being released in hands-free launch | 400 |
 
+### Profiles (v2.2)
+
+Three setting profiles are stored on the ESP (NVS). The active profile IS the current config:
+changing a setting edits the active profile in RAM, and `SAVE_FLASH` writes it into the active
+slot. Switching profiles loads the other slot's saved values; unsaved changes are discarded (the
+dashboard asks first). The master switch `armed` is global and not part of any profile.
+
+| Slot | Factory name | Factory values (all other keys = config defaults) |
+| --- | --- | --- |
+| 0 | `UTCA` | `decelPops` false, `ghostCam` false, `cutPattern` 0 |
+| 1 | `SHOW` | `decelPops` true, `ghostCam` true, `cutPattern` 1 |
+| 2 | `RAJT` | `launchRpm` 3500, `decelPops` false, `ghostCam` false, `cutPattern` 0 |
+
+Config defaults for the other keys: `launchRpm` 3800, `launchDrop` 400, `redlineRpm` 6200,
+`decelRpm` 3200, `maxCutSeconds` 3.0.
+
+Names: 1–12 characters (UTF-8, Hungarian accents allowed, max 24 bytes). The firmware drops
+control characters, `"` and `\`, and trims surrounding spaces; an empty result keeps the old name.
+
+Migration from 2.0/2.1 (no profile data in NVS yet): the previously saved config goes into
+slot 1 (`SHOW`), which becomes active; slots 0 and 2 get their factory values.
+
+Protocol additions:
+
+| Message | Direction | Meaning |
+| --- | --- | --- |
+| `CFG:{…,"profile":1,"profiles":["UTCA","SHOW","RAJT"]}` | → dashboard | Active slot and all names, in every `CFG:` |
+| `PROFILE:<n>` | → firmware | Load slot `n` (0–2), apply it at once, remember it as active (persisted with the NVS no-cut rule). Replies with `CFG:` then `ACK:PROFILE`. |
+| `SAVE_FLASH` | → firmware | Writes the current config (except `armed`) into the ACTIVE slot, and `armed` globally. Replies `ACK:SAVED`. |
+| `PROFILE_RESET` | → firmware | Active slot back to its factory values: applied and saved. Replies with `CFG:` then `ACK:RESET`. |
+| `PROFILE_NAME:<n>:<name>` | → firmware | Rename slot `n` (saved). Replies with `CFG:`. |
+| `ERR:<Hungarian text>` | → dashboard | A command was refused (bad slot, bad name, …). |
+
 ## HTTP API (port 80)
 
 Authoritative details: the header comment of `swift_show_tuning/ota_update.cpp`.
