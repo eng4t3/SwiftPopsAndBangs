@@ -48,7 +48,7 @@
   .demo-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px 8px 14px; border-radius: 14px; border: 1px dashed rgba(255,170,0,.55); background: rgba(255,170,0,.08); font-size: .8rem; color: #ffd98a; }
   .demo-bar .btn { width: auto; flex-shrink: 0; touch-action: none; }
 
-  /* RPM readout: cut-reason line, big number, slim bar with zones and markers */
+  /* RPM readout */
   .cluster { padding: 12px 14px 12px; display: flex; flex-direction: column; gap: 10px; }
   .cluster.cutting { border-color: rgba(255,34,71,.6); box-shadow: 0 0 28px rgba(255,34,71,.3); }
   .cut-line { font: 900 .78rem var(--disp); letter-spacing: 1.5px; text-align: center; padding: 8px 10px; border-radius: 12px; border: 1px solid var(--line); background: rgba(0,0,0,.35); color: var(--muted); white-space: nowrap; }
@@ -169,7 +169,7 @@
   .save-btn.dirty small { color: #ffd98a; }
   .save-btn.saving { opacity: .85; border-color: var(--cyan); }
 
-  /* Buttons, forms, firmware update */
+  /* Buttons, forms, update */
   .btn { width: 100%; min-height: 46px; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(0,240,255,.5); background: rgba(0,240,255,.08); color: var(--cyan); font: 800 .72rem var(--disp); letter-spacing: 1px; }
   .btn:active { background: rgba(0,240,255,.25); }
   .btn:disabled { opacity: .4; }
@@ -192,6 +192,9 @@
   .fld { display: flex; flex-direction: column; gap: 4px; font-size: .82rem; color: var(--muted); }
   .fld input { font: 600 1rem var(--body); color: var(--text); background: #0b111c; border: 1px solid #253046; border-radius: 10px; padding: 10px 12px; min-height: 44px; width: 100%; }
   .fld input:focus { outline: none; border-color: var(--cyan); }
+  .fld input:disabled { opacity: .4; }
+  .chk { display: flex; align-items: center; gap: 8px; font-size: .85rem; color: var(--muted); min-height: 40px; }
+  .chk input { width: 20px; height: 20px; accent-color: var(--red); }
   .ota-st { border-radius: 10px; padding: 9px 11px; font-size: .88rem; line-height: 1.35; background: rgba(0,240,255,.06); border: 1px solid rgba(0,240,255,.25); color: #cfe9f5; display: flex; flex-direction: column; gap: 7px; word-break: break-word; }
   .ota-st.ok { background: rgba(0,255,136,.07); border-color: rgba(0,255,136,.4); color: #b8ffd9; }
   .ota-st.go { background: rgba(0,255,136,.1); border-color: var(--green); color: #fff; }
@@ -227,7 +230,6 @@
 <body>
 <div class="wrap">
 
-  <!-- Top bar: brand, firmware version, connection -->
   <header class="card topbar">
     <div class="brand">
       <div class="brand-title">SWIFT <span class="badge">G13BA</span></div>
@@ -244,7 +246,6 @@
     <button id="demoGas" class="btn sm">🦶 GÁZ (TARTSD)</button>
   </div>
 
-  <!-- RPM readout: what is cutting, big number, bar (zones follow the configured redline) -->
   <section id="cluster" class="card cluster">
     <div id="cutLine" class="cut-line">NINCS ADAT</div>
     <div class="readout">
@@ -262,7 +263,6 @@
     <div class="legend"><span>RAJT <b id="lgLaunch"></b></span><span>LIMIT <b id="lgRed"></b></span></div>
   </section>
 
-  <!-- Launch control / show 2-step -->
   <section class="card launch">
     <div class="seg" role="group" aria-label="Rajt mód">
       <button id="modeHandsFree" onclick="setLaunchMode('handsfree')"><b>⚡ HANDS-FREE RAJT</b><small>egy koppintás</small></button>
@@ -277,7 +277,7 @@
     <div id="armWarn" class="warn-line" hidden>⚠ A rendszer ki van kapcsolva, a vezérlő most nem vesz el szikrát. Bekapcsolás: Biztonság kártya.</div>
   </section>
 
-  <!-- Settings (slider blocks are built from SLIDERS in the script) -->
+  <!-- slider blocks are built from SLIDERS -->
   <div id="settings" class="settings loading">
     <details class="card" id="grpLaunch" open>
       <summary><span class="ico">🏁</span><span class="st">RAJT / LAUNCH</span><span id="sumLaunch" class="sv"></span><i class="chev"></i></summary>
@@ -309,7 +309,7 @@
           <button class="pat" data-p="1" data-seq="xxxoxxxo"><b>🔥 LÁNGCSÓVA</b><small>3 szikra kimarad, 1 gyújt</small></button>
           <button class="pat" data-p="2" data-seq="xxoxxoxx"><b>💥 DURROGÁS</b><small>2 szikra kimarad, 1 gyújt</small></button>
           <button class="pat" data-p="3" data-seq="xoxoxoxo"><b>🎯 AK-47</b><small>1 kimarad, 1 gyújt – gyors staccato</small></button>
-          <button class="pat" data-p="4" data-seq="Looo"><b>💣 ÁGYÚLÖVÉS</b><small>~1,6 s teljes tiltás, majd visszajön a szikra = nagy dörrenés</small></button>
+          <button class="pat" data-p="4" data-seq="Looo"><b>💣 ÁGYÚLÖVÉS</b><small>~1,6 s teljes tiltás, majd nagy dörrenés – show módban és kapcsolóval; redline-on és rajtkor kemény tiltás</small></button>
         </div>
         <div class="hint center">Gyújtásonként: piros = kimaradó szikra, zöld = gyújtás</div>
         <div class="row"><div class="lbl"><b>👻 Ghost Cam™ / V8 alapjárat</b><small>Hegyes vezértengelyes dadogás alapjáraton (650–1250 RPM)</small></div><label class="sw"><input type="checkbox" id="cfgGhostCam" aria-label="Ghost Cam"><span></span></label></div>
@@ -327,7 +327,6 @@
     <button id="saveBtn" class="save-btn" onclick="saveToFlash()"><b id="saveTxt"></b><small id="saveSub"></small></button>
   </div>
 
-  <!-- Firmware update: three paths, most convenient first -->
   <details class="card" id="grpFw">
     <summary><span class="ico">📡</span><span class="st">FIRMWARE FRISSÍTÉS</span><span id="sumFw" class="sv off">–</span><i class="chev"></i></summary>
     <div class="cb">
@@ -335,7 +334,7 @@
 
       <div class="box">
         <div class="row"><span class="box-h">📱 FRISSÍTÉS TELEFONON ÁT</span><span class="tag">AJÁNLOTT</span></div>
-        <p class="hint">A telefon letölti a legújabb firmware-t a GitHubról (mobilneten), és feltölti a vezérlőre. Androidon az autó Wi-Fi-je mellett is működik, ha be van kapcsolva a mobilnet; iPhone-on gyakran nem – ott a Wi-Fi-s módot vagy a kézi feltöltést használd.</p>
+        <p class="hint">A telefon mobilneten letölti a GitHubról a legújabb firmware-t, és feltölti a vezérlőre. Androidon az autó Wi-Fi-je mellett is megy, ha be van kapcsolva a mobilnet; iPhone-on gyakran nem – ott használd a Wi-Fi-s módot vagy a kézi feltöltést.</p>
         <div class="btn-row">
           <button id="p1Check" class="btn" onclick="phoneCheck()">🔍 FRISSÍTÉS KERESÉSE</button>
           <button id="p1Install" class="btn go" onclick="phoneInstall()" hidden>⬇ TELEPÍTÉS</button>
@@ -346,9 +345,10 @@
       <details class="box" id="p2Box">
         <summary><span class="box-h">📶 FRISSÍTÉS WI-FI-N (AZ ESP TÖLTI LE)</span><i class="chev"></i></summary>
         <div class="sub-b">
-          <p class="hint">Az ESP egy internetes Wi-Fi-re (otthoni router vagy telefonos hotspot) csatlakozik, és maga tölti le a frissítést. Közben az autó Wi-Fi-je egy pillanatra megszakadhat (csatornaváltás) – az oldal magától újracsatlakozik. Hotspotnál a telefon általában nem maradhat közben az autó Wi-Fi-jén: indítsd el a telepítést, az ESP egyedül befejezi, utána csatlakozz vissza a Swift-PopsAndBangs hálózatra, és nyisd meg újra az oldalt.</p>
+          <p class="hint">Az ESP egy internetes Wi-Fi-re (router vagy telefonos hotspot) csatlakozik, és maga tölti le a frissítést. Az autó Wi-Fi-je közben egy pillanatra megszakadhat (csatornaváltás) – az oldal újracsatlakozik. Hotspotnál a telefon általában nem maradhat az autó Wi-Fi-jén: indítsd el a telepítést, az ESP egyedül befejezi, utána csatlakozz vissza a Swift-PopsAndBangs hálózatra.</p>
           <label class="fld"><span>Wi-Fi hálózat neve (SSID)</span><input id="staSsid" data-track autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="pl. OtthoniWifi"></label>
           <label class="fld"><span>Wi-Fi jelszó</span><input id="staPass" type="password" autocomplete="off" placeholder="a Wi-Fi jelszava"></label>
+          <label class="chk"><input type="checkbox" id="staOpen" onchange="$('staPass').disabled = this.checked"> Nyílt hálózat (nincs jelszó)</label>
           <details class="sub">
             <summary>Haladó: GitHub tároló és ág</summary>
             <div class="sub-b">
@@ -356,7 +356,7 @@
               <label class="fld"><span>Ág (branch)</span><input id="espBranch" data-track autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="main"></label>
             </div>
           </details>
-          <div class="row"><div class="lbl"><b>Automatikus ellenőrzés</b><small>Az ESP magától keres új verziót a mentett Wi-Fi-n át</small></div><label class="sw"><input type="checkbox" id="espAuto" data-track aria-label="Automatikus ellenőrzés"><span></span></label></div>
+          <div class="row"><div class="lbl"><b>Automatikus ellenőrzés</b><small>Az ESP magától keres új verziót</small></div><label class="sw"><input type="checkbox" id="espAuto" data-track aria-label="Automatikus ellenőrzés"><span></span></label></div>
           <button class="btn" onclick="espSaveCfg()">💾 WI-FI BEÁLLÍTÁSOK MENTÉSE</button>
           <div class="btn-row">
             <button id="p2Check" class="btn" onclick="espAction('check')">🔍 ELLENŐRZÉS</button>
@@ -370,7 +370,7 @@
       <details class="box" id="p3Box">
         <summary><span class="box-h">📁 KÉZI FELTÖLTÉS (.BIN)</span><i class="chev"></i></summary>
         <div class="sub-b">
-          <p class="hint">Tartalék megoldás: ha a firmware.bin már a telefonodon van, itt kiválaszthatod és feltöltheted.</p>
+          <p class="hint">Tartalék: egy már letöltött firmware.bin feltöltése.</p>
           <input type="file" id="otaFile" accept=".bin,application/octet-stream" hidden onchange="pickFile(this)">
           <button class="btn dashed" onclick="$('otaFile').click()">📁 FIRMWARE (.BIN) KIVÁLASZTÁSA</button>
           <div id="p3Name" class="hint center">Nincs fájl kiválasztva</div>
@@ -381,7 +381,6 @@
     </div>
   </details>
 
-  <!-- System -->
   <details class="card" id="grpSys">
     <summary><span class="ico">⚙️</span><span class="st">RENDSZER</span><i class="chev"></i></summary>
     <div class="cb">
@@ -390,10 +389,6 @@
         <dt>Szabad memória</dt><dd id="sysHeap">–</dd>
         <dt>Telemetria</dt><dd id="sysRate">–</dd>
       </dl>
-      <div class="btn-row">
-        <button class="btn sm" onclick="resetPeak()">CSÚCS NULLÁZÁSA</button>
-        <button class="btn sm" onclick="openModal()">SÚGÓ</button>
-      </div>
       <button class="btn warn" onclick="restoreDefaults()">🔄 AJÁNLOTT ÉRTÉKEK VISSZAÁLLÍTÁSA</button>
     </div>
   </details>
@@ -401,7 +396,6 @@
 
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-<!-- Help -->
 <div id="infoModal" class="modal" aria-hidden="true">
   <div class="modal-card" role="dialog" aria-modal="true" aria-label="Funkcióleírások">
     <div class="modal-head"><span>ℹ FUNKCIÓLEÍRÁSOK</span><button class="icon-btn" onclick="closeModal()" aria-label="Bezárás">✕</button></div>
@@ -419,7 +413,7 @@
         <h3>🔥 Show mód / 2-step</h3>
         <p>Amíg nyomva tartod a gombot, a motor a rajt limiten tilt (állóhelyzeti durrogtatás, lángok); elengedve azonnal leáll.</p>
         <p><b>Biztonság:</b> a telefon 200 ms-onként megerősíti a nyomva tartást; ha a kapcsolat megszakad vagy elhagyod az oldalt, a vezérlő 0,6 mp-en belül magától elengedi.</p>
-        <p><b>Padteszt:</b> ha a motor legalább 2 mp-e áll, a show gomb folyamatosan tilt (bekötés-ellenőrzés, a kék LED világít). Amint jön egy gyújtásjel, azonnal leáll.</p>
+        <p><b>Padteszt:</b> ha a motor tényleg áll (legalább 2 mp-e, nem csak járás közben szakadt meg a jel), a show gomb folyamatosan tilt (bekötés-ellenőrzés, a kék LED világít), legfeljebb kb. 10 mp-ig – utána engedd el és nyomd meg újra. Padteszt közben a motor nem indul – indítás előtt engedd el a gombot.</p>
         <p><b>GPIO 23 kapcsoló:</b> kézifékre vagy kuplungra kötve ugyanígy 2-step, de padtesztet soha nem indít, így kinyomott kuplunggal is indul a motor.</p>
       </div>
       <div class="msec">
@@ -428,7 +422,7 @@
       </div>
       <div class="msec">
         <h3>💥 Gázelvételi durrogás</h3>
-        <p>Ha a küszöb (pl. 3200 RPM) fölül hirtelen elveszed a gázt, motorfék közben rövid szikraelvételek jönnek, és a keverék a forró kipufogóban durran el. Gyorsításkor nem kapcsol be.</p>
+        <p>Ha a küszöb (pl. 3200 RPM) fölül hirtelen elveszed a gázt, motorfék közben rövid szikraelvételek jönnek, és a keverék a forró kipufogóban durran el. Gyorsításkor nem kapcsol be, és ha közben újra gázt adsz, bármelyik mintázatnál azonnal abbamarad.</p>
       </div>
       <div class="msec">
         <h3>🎯 Mintázatok (gyújtásonként)</h3>
@@ -437,7 +431,7 @@
         <p>• <b>Lángcsóva:</b> 3 kimarad, 1 gyújt – sok keverék a kipufogóban, nagy lángok.</p>
         <p>• <b>Durrogás:</b> 2 kimarad, 1 gyújt – sűrű, mély lövések.</p>
         <p>• <b>AK-47:</b> 1 kimarad, 1 gyújt – gyors, géppuskaszerű staccato.</p>
-        <p>• <b>Ágyúlövés:</b> kb. 1,6 s teljes tiltás (a kipufogó megtelik keverékkel), majd visszajön a szikra: egy nagy dörrenés és tűzgolyó.</p>
+        <p>• <b>Ágyúlövés:</b> kb. 1,6 s teljes tiltás (a kipufogó megtelik keverékkel), majd visszajön a szikra: egy nagy dörrenés és tűzgolyó. Ez show módban és a 2-step kapcsolóval működik; a redline-on és hands-free rajtkor kemény tiltásként viselkedik.</p>
       </div>
       <div class="msec">
         <h3>👻 Ghost Cam™ / V8 alapjárat</h3>
@@ -455,7 +449,7 @@
       </div>
       <div class="msec">
         <h3>💾 Mentés</h3>
-        <p>A változtatások azonnal, de ideiglenesen élnek. A kiemelt mentés gomb jelzi a nem mentett változást; a „mentve” üzenet a vezérlő visszaigazolása után jön.</p>
+        <p>A változtatások azonnal, de ideiglenesen élnek; a kiemelt gombbal mentsd őket. A „mentve” jelzés a vezérlő visszaigazolása után jön.</p>
       </div>
       <div class="msec">
         <h3>📡 Firmware frissítés</h3>
@@ -582,7 +576,7 @@ function scheduleReconnect() {
   wsFails++;
   wsTimer = setTimeout(connectWS, Math.min(1000 * wsFails, 4000));
 }
-// The socket is closed during a firmware upload (frees the ESP) and resumed afterwards
+// closed during a firmware upload (frees the ESP), resumed afterwards
 function suspendWS(on) {
   if (DEMO || wsSuspended === on) return;
   wsSuspended = on;
@@ -591,7 +585,7 @@ function suspendWS(on) {
 }
 function setConn(state) {
   $('statusPill').className = 'pill ' + state;
-  txt('statusText', wsSuspended ? 'FRISSÍTÉS…' : { connecting: 'KERESÉS…', up: DEMO ? 'DEMÓ' : 'KAPCSOLÓDVA', down: 'KERESÉS…' }[state]);
+  txt('statusText', wsSuspended ? 'FRISSÍTÉS…' : state !== 'up' ? 'KERESÉS…' : DEMO ? 'DEMÓ' : 'KAPCSOLÓDVA');
 }
 function linkUp() {
   S.connected = true;
@@ -728,7 +722,7 @@ function renderLaunch() {
   } else if (!hf) {
     if (L.showHeld) {
       cls += ' pressed'; title = '🔥 2-STEP AKTÍV 🔥';
-      sub = S.reason === 7 ? 'PADTESZT • ÁLLÓ MOTOR, FOLYAMATOS TILTÁS' : S.reason === 8 ? 'ANTI-FLOOD ZÁR • ENGEDD EL' : 'ENGEDD EL A LEÁLLÍTÁSHOZ';
+      sub = S.reason === 7 ? 'PADTESZT • INDÍTÁS ELŐTT ENGEDD EL' : S.reason === 8 ? 'ANTI-FLOOD ZÁR • ENGEDD EL' : 'ENGEDD EL A LEÁLLÍTÁSHOZ';
     } else { title = '🏁 SHOW MÓD / 2-STEP'; sub = 'TARTSD NYOMVA A DURROGÁSHOZ ÉS LÁNGOKHOZ'; }
   } else if (L.state === 1) {
     cls += ' armed'; title = '⚡ RAJTRA KÉSZ • ARMED';
@@ -790,7 +784,7 @@ const SLIDERS = {
 };
 document.querySelectorAll('[data-sl]').forEach(d => {
   const id = d.dataset.sl, [min, max, step, val, title, sub] = SLIDERS[id];
-  const stepBtn = (sign, label) => `<button class="step" data-t="${id}" data-d="${sign}${step}" aria-label="${title}: ${label}">${sign === '-' ? '−' : '+'}</button>`;
+  const stepBtn = (sign, label) => `<button class="step" data-t="${id}" data-d="${sign}${step}" aria-label="${label}">${sign === '-' ? '−' : '+'}</button>`;
   d.insertAdjacentHTML('afterbegin', `<div class="row"><div class="lbl"><b>${title}</b><small>${sub}</small></div><output id="val${id.slice(3)}" class="val"></output></div>`
     + `<div class="sl-row">${stepBtn('-', 'csökkentés')}<input type="range" id="${id}" min="${min}" max="${max}" step="${step}" value="${val}" aria-label="${title}">${stepBtn('', 'növelés')}</div>`);
 });
@@ -801,7 +795,7 @@ const KEY_OF = {};
 for (const k in INPUTS) KEY_OF[INPUTS[k]] = k;
 const PATTERN_NAMES = ['KEMÉNY TILTÁS', 'LÁNGCSÓVA', 'DURROGÁS', 'AK-47', 'ÁGYÚLÖVÉS'];
 let curPattern = 1, cfgLoaded = false;
-// dirty = changed by the user since the last confirmed save; pend = changed but not sent yet
+// dirty = changed since the last confirmed save; pend = not sent yet
 const dirty = new Set(), pend = new Set();
 let saving = false, savingKeys = null, saveTimer = 0, lastCfgSentAt = 0, cfgSendTimer = 0;
 const isDirty = () => dirty.size > 0;
@@ -856,8 +850,8 @@ function onUserChange(keys) {
   renderSave();
   queueSend();
 }
-// Only changed keys are sent, at most 10 SET_CFG/s (the trailing send has the latest values),
-// and never before this connection's CFG arrived, so page defaults can't overwrite the device.
+// Only changed keys, <= 10 SET_CFG/s (trailing send = latest values), and never before this
+// connection's CFG arrived, so page defaults can't overwrite the device.
 function queueSend() {
   if (!S.connected || !cfgReceived || !pend.size) return;
   const wait = 100 - (Date.now() - lastCfgSentAt);
@@ -878,8 +872,7 @@ function onConfig(json) {
   if (!c || typeof c !== 'object') return;
   cfgReceived = true;
   if (c.fw) setFw(String(c.fw));
-  // Device values win, except keys the user changed and has not saved: those are sent again
-  // (the ESP may have rebooted and lost them)
+  // device values win, except unsaved user changes: those are re-sent (the ESP may have rebooted)
   const keep = new Set([...dirty, ...pend]);
   applyCfg(c, keep);
   keep.forEach(k => pend.add(k));
@@ -903,8 +896,7 @@ function saveToFlash() {
   saving = true;
   savingKeys = new Set(dirty);
   renderSave();
-  // small gap after the last SET_CFG so the two frames reach the firmware separately;
-  // the ESP may answer up to ~1 s later (it waits for a moment without spark cut)
+  // gap after the last SET_CFG so the frames arrive separately; the ACK may take ~1 s
   setTimeout(() => {
     if (!saving) return;
     if (!wsSend('SAVE_FLASH')) { saveFailed('Nincs kapcsolat.'); return; }
@@ -1001,7 +993,7 @@ function applyInfo(i) {
   fill('espAuto', i.autoCheck);
   $('staPass').placeholder = i.staSsid ? 'üresen hagyva változatlan' : 'a Wi-Fi jelszava';
 }
-// Status line + progress bar used by all three update paths
+// Status line + progress bar of an update path
 function otaUi(id) {
   const box = $(id), msg = box.querySelector('.ota-msg'), bar = box.querySelector('.bar i');
   return {
@@ -1044,43 +1036,44 @@ function flashBlob(blob, md5, ui) {
         : 'A vezérlő elutasította a frissítést (HTTP ' + x.status + (t ? ': ' + t : '') + '). A régi firmware megmaradt.'));
     };
     x.onerror = x.ontimeout = () => {
-      if (sentAll) { resolve(); return; }   // the reboot can cut the reply short: the version check decides
+      if (sentAll) { resolve(); return; }   // the reboot can cut the reply short
       suspendWS(false);
       reject(new Error('Megszakadt a kapcsolat feltöltés közben. Ellenőrizd, hogy a telefon a Swift-PopsAndBangs Wi-Fi-n van, és próbáld újra – a régi firmware addig megmarad.'));
     };
     x.send(fd);
   });
 }
-// After flashing: wait for the reboot, then confirm the running version via /api/info
+// After flashing, confirm the reboot via /api/info: by the target version if known, else by
+// `uptime` (ms since boot) < time since the upload; no `uptime` (old firmware): soft message.
 async function waitForVersion(expect, ui) {
-  const t0 = Date.now();
+  const t0 = Date.now(), el = () => Date.now() - t0;
+  const fail = msg => { suspendWS(false); throw new Error(msg); };
   ui.set('Újraindulás – várakozás a vezérlőre…', 'info');
   await sleep(4000);
-  while (Date.now() - t0 < 90000) {
+  while (el() < 90000) {
     const i = await refreshInfo();
     if (i) {
-      if (!expect || (+i.code || verCode(i.fw)) >= expect) {
-        ui.set('✔ Sikeres frissítés – most a v' + i.fw + ' fut.' + (DEMO ? '' : ' Az oldal újratöltődik…'), 'ok', 100);
-        toast('✔ Firmware frissítve: v' + i.fw);
-        vibrate([60, 40, 60]);
-        suspendWS(false);
-        if (!DEMO) { FW.reloading = true; setTimeout(() => location.reload(), 2500); }
-        return;
-      }
-      if (Date.now() - t0 > 12000) {
-        suspendWS(false);
-        throw new Error('A vezérlő újraindult, de még a v' + i.fw + ' fut – az új firmware nem aktiválódott. Próbáld újra.');
-      }
+      const code = +i.code || verCode(i.fw);
+      const rebooted = typeof i.uptime === 'number' ? i.uptime < el() + 2000 : null;
+      if (expect ? code >= expect : rebooted !== false) return updateDone(i, ui, !!expect || rebooted);
+      if (rebooted || (rebooted === null && el() > 12000)) fail('A vezérlő újraindult, de még a v' + i.fw + ' fut – az új firmware nem aktiválódott. Próbáld újra.');
+      if (el() > 25000) fail('A vezérlő nem indult újra, még a v' + i.fw + ' fut – a frissítés nem történt meg. Próbáld újra.');
     }
-    ui.set('Újraindulás – várakozás a vezérlőre… (' + Math.round((Date.now() - t0) / 1000) + ' s)', 'info');
+    ui.set('Újraindulás – várakozás a vezérlőre… (' + Math.round(el() / 1000) + ' s)', 'info');
     await sleep(1500);
   }
+  fail('A vezérlő 90 mp alatt nem jelentkezett. Csatlakozz újra a Swift-PopsAndBangs Wi-Fi-hez, és töltsd újra az oldalt.');
+}
+function updateDone(i, ui, sure) {
   suspendWS(false);
-  throw new Error('A vezérlő 90 mp alatt nem jelentkezett. Csatlakozz újra a Swift-PopsAndBangs Wi-Fi-hez, és töltsd újra az oldalt.');
+  if (!sure) { ui.set('Újraindult? Ellenőrizd a verziót – a vezérlő most ezt jelzi: v' + i.fw, 'warn'); return; }
+  ui.set('✔ Sikeres frissítés – most a v' + i.fw + ' fut.' + (DEMO ? '' : ' Az oldal újratöltődik…'), 'ok', 100);
+  toast('✔ Firmware frissítve: v' + i.fw);
+  vibrate([60, 40, 60]);
+  if (!DEMO) { FW.reloading = true; setTimeout(() => location.reload(), 2500); }
 }
 
-// Path 1: the phone downloads from GitHub (mobile data), then uploads to the ESP.
-// Public repo, anonymous: raw.githubusercontent.com sends Access-Control-Allow-Origin: *
+// Path 1: the phone downloads from GitHub (raw.githubusercontent.com allows CORS), then uploads
 const OTHER_WAYS = ' Használd a „Frissítés Wi-Fi-n” módot (az ESP tölti le), vagy a kézi feltöltést.';
 async function ghFetch(path, timeout) {
   if (DEMO) return sim.gh(path);
@@ -1092,7 +1085,7 @@ async function ghFetch(path, timeout) {
   catch (e) {
     throw new Error((ctl.signal.aborted
       ? 'A GitHub nem válaszolt időben – lassú vagy nincs mobilnet.'
-      : 'Nem érem el a GitHubot: a telefonon nincs mobilnet, vagy az autó Wi-Fi-je mellett nem használja. Androidon kapcsold be a mobilnetet, és ha a telefon rákérdez, maradj a Wi-Fi-n internet nélkül; iPhone-on ez többnyire nem megy.') + OTHER_WAYS);
+      : 'Nem érem el a GitHubot: nincs mobilnet, vagy a telefon nem használja az autó Wi-Fi-je mellett (Androidon kapcsold be, és maradj a Wi-Fi-n internet nélkül; iPhone-on többnyire nem megy).') + OTHER_WAYS);
   } finally { clearTimeout(tm); }
   if (r.ok) return r;
   const where = ' (' + FW.repo + ', ág: ' + FW.branch + ')';
@@ -1147,7 +1140,7 @@ async function downloadFirmware(m) {
 async function phoneInstall() {
   const m = FW.manifest;
   if (!m || FW.busy) return;
-  if (!confirm('Telepíted a v' + m.version + ' firmware-t?\nA telefon letölti (' + kb(m.size) + '), és feltölti a vezérlőre, ami utána újraindul.\n\nÁlló motornál frissíts, és ne zárd be az oldalt.')) return;
+  if (!confirm('Telepíted a v' + m.version + ' firmware-t (' + kb(m.size) + ')? A vezérlő utána újraindul.\n\nÁlló motornál frissíts, és ne zárd be az oldalt.')) return;
   setBusy(true);
   try {
     await flashBlob(await downloadFirmware(m), m.md5, p1);
@@ -1157,17 +1150,18 @@ async function phoneInstall() {
   setBusy(false);
 }
 
-// Path 2: the ESP joins an internet Wi-Fi and downloads by itself; the page polls the status
+// Path 2: the ESP downloads by itself over an internet Wi-Fi; the page polls its status
 const OTA_LABEL = { idle: 'Tétlen', connecting: 'Csatlakozás a Wi-Fi-hez…', checking: 'Verzió ellenőrzése…', available: 'Új verzió elérhető', uptodate: 'Naprakész', downloading: 'Letöltés…', flashing: 'Írás a flash-be…', done: 'Kész – újraindulás…', error: 'Hiba' };
 const OTA_BUSY = ['connecting', 'checking', 'downloading', 'flashing'];
 const poll = { on: false, timer: 0, fails: 0, wasBusy: false, expect: 0, waiting: false };
 
 async function espSaveCfg() {
   const i = FW.info || {}, p = new URLSearchParams();
-  const ssid = $('staSsid').value.trim(), pass = $('staPass').value;
+  const ssid = $('staSsid').value.trim(), open = $('staOpen').checked, pass = open ? '' : $('staPass').value;
   const repo = $('espRepo').value.trim(), branch = $('espBranch').value.trim(), auto = $('espAuto').checked;
-  if (ssid !== (i.staSsid || '') || pass) p.set('ssid', ssid);
-  if (pass) p.set('pass', pass);
+  if (open && !ssid) { toast('Add meg a nyílt hálózat nevét', 'err'); return; }
+  if (ssid !== (i.staSsid || '') || pass || open) p.set('ssid', ssid);
+  if (pass || open) p.set('pass', pass);   // empty field without "open" = keep the saved password
   if (repo && repo !== i.repo) {
     if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) { toast('A tároló formátuma: felhasználó/név', 'err'); return; }
     p.set('repo', repo);
@@ -1180,18 +1174,19 @@ async function espSaveCfg() {
     if (r && r.ok === false) throw new Error(r.msg || 'A vezérlő elutasította a beállításokat.');
     ['staSsid', 'espRepo', 'espBranch', 'espAuto'].forEach(id => delete $(id).dataset.edited);
     $('staPass').value = '';
+    $('staPass').disabled = $('staOpen').checked = false;
     toast('✔ Frissítési beállítások elmentve');
     refreshInfo();
   } catch (e) { toast(e.message, 'err'); }
 }
 async function espAction(kind) {
-  if (kind === 'install' && !confirm('Az ESP letölti és telepíti az új firmware-t, majd újraindul (1–2 perc).\n\nKözben a telefon lecsatlakozhat az autó Wi-Fi-jéről – ez normális; ha nem jön vissza magától, csatlakozz újra.\n\nÁlló motornál frissíts. Indulhat?')) return;
+  if (kind === 'install' && !confirm('Az ESP letölti és telepíti az új firmware-t, majd újraindul (1–2 perc). Közben a telefon lecsatlakozhat – ha nem jön vissza magától, csatlakozz újra.\n\nÁlló motornál frissíts. Indulhat?')) return;
   try {
     const r = await api('/api/ota/' + kind, { method: 'POST', body: '', timeout: 6000 });
     if (r && r.ok === false) throw new Error(r.msg || 'A vezérlő elutasította a kérést.');
     if (kind !== 'cancel') p2.set(kind === 'install' ? 'Telepítés indul…' : 'Ellenőrzés indul…', 'info');
   } catch (e) {
-    // the ESP may switch Wi-Fi channel right away and the reply gets lost: keep watching the status
+    // the reply can get lost when the ESP switches Wi-Fi channel: keep polling
     if (!e.net) { p2.set(e.message, 'err'); return; }
     p2.set('A kérés elment, de nem jött válasz – figyelem az állapotot…', 'warn');
   }
@@ -1208,7 +1203,7 @@ async function pollTick() {
   try { s = await api('/api/ota/status', { timeout: 2500 }); poll.fails = 0; }
   catch (e) { poll.fails++; }
   if (s) renderOta(s);
-  else if (poll.fails > 1) p2.set('⚠ Nincs kapcsolat a vezérlővel. Ha az ESP épp a másik Wi-Fi-hez csatlakozik, a telefon lecsatlakozhatott – várok és újrapróbálom… (' + poll.fails + ')', 'warn');
+  else if (poll.fails > 1) p2.set('⚠ Nincs kapcsolat (az ESP épp a másik Wi-Fi-n lehet) – újrapróbálom… (' + poll.fails + ')', 'warn');
   const busy = s ? OTA_BUSY.includes(s.state) : poll.wasBusy;
   if (poll.waiting || (!busy && !($('grpFw').open && $('p2Box').open))) { poll.on = false; return; }
   poll.timer = setTimeout(pollTick, s ? 1000 : 2000);
@@ -1253,7 +1248,7 @@ async function pickFile(inp) {
 }
 async function fileInstall() {
   if (!pickedFile || FW.busy) return;
-  if (!confirm('Feltöltöd és telepíted: ' + pickedFile.name + '?\nA vezérlő utána újraindul. Álló motornál frissíts, és ne zárd be az oldalt.')) return;
+  if (!confirm('Telepíted: ' + pickedFile.name + '? A vezérlő utána újraindul.\n\nÁlló motornál frissíts, és ne zárd be az oldalt.')) return;
   setBusy(true);
   try { await flashBlob(pickedFile, '', p3); await waitForVersion(0, p3); }
   catch (e) { p3.set(e.message, 'err'); }
@@ -1270,7 +1265,7 @@ window.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); 
 const sim = DEMO ? makeSim() : null;
 function makeSim() {
   const s = {
-    online: true, cfg: Object.assign({}, CFG_DEF), rpm: 850, gas: false, btn: false, btnAt: 0, thr: false, liftAt: 0,
+    online: true, bootAt: Date.now() - 600000, cfg: Object.assign({}, CFG_DEF), rpm: 850, gas: false, btn: false, btnAt: 0, thr: false, liftAt: 0,
     ls: 0, armAt: 0, holdAt: 0, firedAt: 0, cutStart: 0, job: 0, pending: null, next: { fw: '2.1.0', code: 20100 },
     info: { fw: '2.0.0', code: 20000, built: '2026-09-24T12:00:00Z', heap: 180000, repo: DEF_REPO, branch: 'main', staSsid: '', autoCheck: false },
     ota: { state: 'idle', progress: 0, msg: '', current: '2.0.0' }
@@ -1285,12 +1280,12 @@ function makeSim() {
     else if (m.startsWith('SET_CFG:')) Object.assign(s.cfg, JSON.parse(m.slice(8)));
     else if (m === 'SAVE_FLASH') setTimeout(() => onMessage('ACK:SAVED'), 300);
   };
-  // ~30 Hz engine model: launch states, cut priority and anti-flood like the firmware
+  // ~30 Hz engine model (launch states, cut priority, anti-flood)
   s.tick = () => {
     if (!s.online) return;
     const now = Date.now(), c = s.cfg;
     if (s.btn && now - s.btnAt > 600) s.btn = false;   // dead-man, like the firmware
-    // the demo driver floors it when armed, drops the clutch after ~2.5 s, lifts after the launch
+    // demo driver: full throttle when armed, clutch drop after ~2.5 s, lift after the launch
     const clutch = s.ls === 2 && now - s.holdAt > Math.min(2500, (c.maxCutSeconds || 9) * 1000 - 600);
     const thr = s.gas || s.btn || s.ls === 2 || (s.ls === 1 && now - s.armAt > 1200) || (s.ls === 3 && now - s.firedAt < 1800);
     if (s.thr && !thr) s.liftAt = now;
@@ -1322,7 +1317,7 @@ function makeSim() {
     setTimeout(() => {
       Object.assign(s.info, { fw: t.fw, code: t.code });
       s.ota = { state: 'idle', progress: 0, msg: '', current: t.fw };
-      s.ls = 0; s.btn = false; s.online = true;
+      s.ls = 0; s.btn = false; s.online = true; s.bootAt = Date.now();
       linkUp();
     }, 5000);
   };
@@ -1351,7 +1346,7 @@ function makeSim() {
     if (!s.online) { const e = new Error('Nem érem el a vezérlőt (hálózati hiba).'); e.net = true; throw e; }
     const p = new URLSearchParams(o.body || ''), bad = msg => ({ ok: false, msg });
     switch (path) {
-      case '/api/info': return Object.assign({}, s.info, { rpm: Math.round(s.rpm), heap: 176000 + (Math.random() * 6000 | 0) });
+      case '/api/info': return Object.assign({}, s.info, { rpm: Math.round(s.rpm), uptime: Date.now() - s.bootAt, heap: 176000 + (Math.random() * 6000 | 0) });
       case '/api/ota/status': return Object.assign({}, s.ota);
       case '/api/ota/config':
         ['staSsid:ssid', 'repo:repo', 'branch:branch'].forEach(k => { const [to, from] = k.split(':'); if (p.has(from)) s.info[to] = p.get(from); });
