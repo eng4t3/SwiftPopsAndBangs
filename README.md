@@ -45,7 +45,7 @@ Csatlakoztasd a laptopot az autó Wi-Fi-jére (`Swift-PopsAndBangs`), majd:
 ```powershell
 pio run -e esp32dev_wifi -t upload
 ```
-Lefordítja a firmware-t, és a Windows 10/11 beépített `curl`-jével feltölti a `http://192.168.4.1/update` címre, MD5 ellenőrzéssel. Más IP-cím esetén: `--upload-port 192.168.x.y`.
+Lefordítja a firmware-t, és a Windows 10/11 beépített `curl`-jével feltölti a `http://192.168.4.1/update` címre, MD5 ellenőrzéssel. Más IP-cím esetén: `--upload-port 192.168.x.y:80` (a `:80` kell, különben a PlatformIO a firmware által nem támogatott espota módra vált).
 
 ---
 
