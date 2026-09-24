@@ -71,7 +71,7 @@ Authoritative details: the header comment of `swift_show_tuning/ota_update.cpp`.
 | --- | --- |
 | `GET /` | Dashboard. `Cache-Control: no-cache` + `ETag` (firmware version + page hash) → `304` on reload. |
 | `GET /api/diag` | Engine counters for car testing (accepted/rejected tach pulses, cut slots, anti-flood trips, last launch drop rate, …). |
-| `GET /api/info` | `{"fw","code","built","heap","repo","branch","staSsid","autoCheck","rpm"}` (the Wi-Fi password is never returned). |
+| `GET /api/info` | `{"fw","code","built","heap","uptime","repo","branch","staSsid","autoCheck","rpm"}`. `uptime` = ms since boot (proves a reboot after an update). The Wi-Fi password is never returned. |
 | `GET /update` | Minimal fallback upload page (works without JavaScript). |
 | `POST /update[?md5=<hex>]` | Multipart firmware upload (field `update`). `200` → reboot. `400` bad md5 / not an ESP32 image / no file, `409` engine above 1500 RPM or an online update running, `500` flash error, `403` cross-site. |
 | `GET /api/ota/status` | `{"state":"idle\|connecting\|checking\|available\|uptodate\|downloading\|flashing\|done\|error","progress","msg","latest","latestCode","current","staIp"}` |
@@ -79,8 +79,10 @@ Authoritative details: the header comment of `swift_show_tuning/ota_update.cpp`.
 | `POST /api/ota/check` / `install` / `cancel` | ESP-direct online update in a background task; poll `/api/ota/status`. |
 
 JSON routes answer HTTP 200 (check `ok` / `state`), except `403` for a cross-site request:
-every state-changing route refuses a request whose `Origin` host differs from its Host.
-Requests without `Origin` (curl, the laptop upload) are allowed.
+every state-changing route requires the Host to be an IPv4 literal or a `.local` name, and
+an `Origin` (if present) to be `http://` + that same host (DNS-rebinding safe). Requests
+without `Origin` (curl, the laptop upload) are allowed. Updates are refused, and a running
+online install is aborted, while the engine is above 1500 RPM.
 
 A freshly installed image is kept only after ~10 s of healthy uptime with the AP up (or the
 first `/api/info`). If it crashes or reboots before that, the bootloader boots the previous
