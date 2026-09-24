@@ -18,6 +18,8 @@ Usage:
     python tools/log/swiftlog.py capture  swiftlog.bin 57 [-o swift_launch_57.csv]
     python tools/log/swiftlog.py drive    swiftlog.bin 12 [--from MS --to MS --step K] [-o out.csv]
     python tools/log/swiftlog.py csvcheck swift_launch_57.csv     check a CSV downloaded from the ESP
+A drive gap (`# gap` line) means samples were lost, or logging was switched off and on again
+within the same boot (POST /api/log/config); the flash format is the same either way.
 Options: --offset 0x290000 when the file is a full flash dump; --clear-seq N to hide what a
 "clear" forgot (NVS value swlog/clr; the default 0 shows everything still in flash).
 """
