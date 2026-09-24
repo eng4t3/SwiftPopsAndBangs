@@ -143,3 +143,37 @@ void engineUpdate();
 EngineTelemetry engineGetTelemetry();
 int engineGetRpm();
 EngineDiag engineGetDiag();
+
+// ---- Data-logger support (read by data_logger.cpp) --------------------------------------
+// Cumulative counters (wrap at 2^32); the logger stores per-sample deltas.
+struct EngineSlotCounters {
+  uint32_t realPulses;  // accepted tach pulses (= fired sparks that produced a pulse)
+  uint32_t firedSlots;  // ignition slots the scheduler let fire
+  uint32_t cutSlots;    // ignition slots the scheduler suppressed
+  uint32_t unsyncs;     // slot-clock drops (same as EngineDiag::unsyncs)
+};
+EngineSlotCounters engineGetSlotCounters();
+
+// Per-ignition-event trace ring recorded inside the ISRs (last ENGINE_TRACE_LEN events).
+#define ENGINE_TRACE_LEN 512
+enum TraceKind : uint8_t {
+  TR_PULSE     = 0,  // real tach pulse (a spark that fired)
+  TR_CUT_SLOT  = 1,  // predicted ignition event of a suppressed slot
+  TR_OUTLIER   = 2,  // interval held back / discarded by the estimator
+  TR_REJECT    = 3,  // edge rejected by the noise gate
+  TR_CLAMP_ON  = 4,  // clamp engaged
+  TR_CLAMP_OFF = 5,  // clamp released
+  TR_UNSYNC    = 6,  // slot clock dropped
+  TR_STATE     = 7   // launch state / cut reason changed
+};
+struct EngineTraceEvent {  // 8 bytes
+  uint32_t tUs;       // micros() timestamp of the event
+  uint16_t periodUs;  // slot-period estimate at that moment, us (saturates at 65535, 0 = unknown)
+  uint8_t  kind;      // TraceKind
+  uint8_t  info;      // kind-specific, documented in engine_control.cpp (TR_STATE: launchState | reason << 4)
+};
+// Copies the events recorded after sequence number *seq (oldest first, at most `max`) into
+// `out` and advances *seq past the last one copied. Pass *seq = 0 to get the whole ring.
+// If the reader fell more than ENGINE_TRACE_LEN events behind, the oldest were overwritten:
+// *lost (optional) receives how many were skipped. Safe to call from any task (not from an ISR).
+size_t engineReadTrace(EngineTraceEvent* out, size_t max, uint32_t* seq, uint32_t* lost = nullptr);

@@ -859,6 +859,23 @@ EngineDiag engineGetDiag() {
   return d;
 }
 
+// TODO(engine): placeholder so the data logger can be built against the API; replace with the
+// real counters and the ISR trace ring.
+EngineSlotCounters engineGetSlotCounters() {
+  portENTER_CRITICAL(&engMux);
+  EngineSlotCounters c = {diag.pulses, 0, diag.cutSlots, diag.unsyncs};
+  portEXIT_CRITICAL(&engMux);
+  return c;
+}
+
+size_t engineReadTrace(EngineTraceEvent* out, size_t max, uint32_t* seq, uint32_t* lost) {
+  (void)out;
+  (void)max;
+  (void)seq;
+  if (lost) *lost = 0;
+  return 0;
+}
+
 // =========================================================================================
 // SETUP
 // =========================================================================================
