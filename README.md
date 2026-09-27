@@ -49,6 +49,16 @@ Lefordítja a firmware-t, és a Windows 10/11 beépített `curl`-jével feltölt
 
 ---
 
+## 📱 Alkalmazásként a telefonon (Főképernyőhöz adás, v2.3)
+
+A dashboard ikonként kitehető a telefon főképernyőjére. A lépéseket a dashboard **Rendszer** fülén a **📲 Főképernyőhöz adás** kártya mutatja, mindig az adott telefonhoz.
+- **iPhone / iPad (Safari):** Megosztás gomb → **Főképernyőhöz adás** → Hozzáadás. Teljes képernyős alkalmazásként nyílik, címsor nélkül.
+- **Android (Chrome):** ⋮ menü → **Hozzáadás a kezdőképernyőhöz** → Hozzáadás. Az ikon böngészőlapként nyílik: teljes telepítést a Chrome csak HTTPS-es oldalnak enged, a vezérlő pedig sima HTTP-n fut.
+- Az ikon a `http://192.168.4.1` címet nyitja meg, ezért előbb csatlakozz az autó Wi-Fi-jére, csak utána indítsd.
+- Az ikon a `tools/ui/make_icon.py` rajza (`swift_show_tuning/web_icon.h`), a manifest a `web_ui.h` végén van.
+
+---
+
 ## ✨ Főbb Funkciók
 
 1. **🏁 Rajtautomatika / 2-Step (Launch Control):**

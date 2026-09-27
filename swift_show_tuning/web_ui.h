@@ -9,6 +9,8 @@
 //   have system fallbacks (the car's Wi-Fi has no internet).
 // - Built-in demo mode (simulated engine + mocked API) when opened from file:// or with
 //   ?demo=1. tools/ui/export_preview.py writes this page to preview.html.
+// - Home-screen install: WEB_MANIFEST below + /icon.png (web_icon.h) and the Apple meta
+//   tags in <head>; the "Főképernyőhöz adás" card on the Rendszer tab shows the steps.
 // - Never put the raw-literal terminator (close paren + rawliteral + quote) in the page.
 // =========================================================================================
 #include <Arduino.h>
@@ -20,8 +22,14 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#07090e">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Swift Show">
 <title>Suzuki Swift 1.3 8V - Show Tuning Vezérlő</title>
-<link rel="icon" href="data:,">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.png">
+<link rel="apple-touch-icon" href="/icon.png">
 <style>
   :root {
     --bg: #07090e; --panel: #101622eb; --inset: #080c14bf; --line: #ffffff14;
@@ -155,6 +163,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   .sv { font-weight: 700; color: var(--amber); font-variant-numeric: tabular-nums; white-space: nowrap; }
   .sv.off { color: var(--muted); }
   .sv.bad { color: var(--red); }
+  .sv.ok { color: var(--green); }
   .chev { width: 9px; height: 9px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(45deg); margin: 0 3px 4px 4px; transition: transform .2s; }
   details[open] > summary .chev { transform: rotate(-135deg); margin-bottom: -4px; }
   .cb { padding: 2px 16px 16px; display: flex; flex-direction: column; gap: 16px; }
@@ -217,6 +226,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   .box-h { font: 800 .74rem var(--disp); letter-spacing: .8px; flex: 1; }
   .tag { font: 800 .55rem var(--disp); letter-spacing: 1px; color: var(--bg); background: var(--green); border-radius: 4px; padding: 2px 5px; }
   details.box > summary { min-height: 30px; }
+  .steps { padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: .88rem; line-height: 1.35; }
+  .steps b { color: var(--cyan); }
   .sub > summary { font-size: .85rem; color: var(--muted); min-height: 36px; }
   .sub > summary::before { content: '▸'; transition: transform .2s; }
   .sub[open] > summary::before { transform: rotate(90deg); }
@@ -436,6 +447,33 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 </section>
 
 <section class="card">
+  <div class="ch"><span class="ico">📲</span><span class="st">FŐKÉPERNYŐHÖZ ADÁS</span><span id="sumApp" class="sv ok"></span></div>
+  <div class="cb">
+    <p id="appOk" class="hint good" hidden>✔ Az alkalmazás a főképernyőről fut.</p>
+    <p id="appWhy" class="hint">Tedd ki a vezérlőt ikonként a telefon főképernyőjére: egy koppintással, alkalmazásként nyílik meg.</p>
+    <div id="appIos" class="box">
+      <span class="box-h">📱 IPHONE / IPAD</span>
+      <ol class="steps">
+        <li>Koppints a <b>Megosztás</b> gombra (négyzet felfelé mutató nyíllal; ha nem látod, a <b>•••</b> menüben van).</li>
+        <li>A listában lejjebb görgetve válaszd a <b>Főképernyőhöz adás</b> pontot.</li>
+        <li>Koppints a <b>Hozzáadás</b> gombra.</li>
+      </ol>
+      <p class="hint">Teljes képernyős alkalmazásként nyílik meg, címsor nélkül.</p>
+    </div>
+    <div id="appAnd" class="box">
+      <span class="box-h">🤖 ANDROID (CHROME)</span>
+      <ol class="steps">
+        <li>Koppints a <b>⋮</b> menüre jobb felül.</li>
+        <li>Válaszd a <b>Hozzáadás a kezdőképernyőhöz</b> pontot.</li>
+        <li>Koppints a <b>Hozzáadás</b> gombra.</li>
+      </ol>
+      <p class="hint">Más böngészőben (pl. Samsung Internet) a menüben keresd a kezdőképernyős pontot. Androidon az ikon böngészőlapként nyílik: teljes telepítést a böngésző csak HTTPS-es oldalnak enged, a vezérlő pedig sima HTTP-n fut.</p>
+    </div>
+    <p class="hint">Az ikon a vezérlő oldalát nyitja meg (192.168.4.1), ezért előbb csatlakozz az autó Wi-Fi-jére (Swift-PopsAndBangs), csak utána indítsd.</p>
+  </div>
+</section>
+
+<section class="card">
   <div class="ch"><span class="ico">⚙️</span><span class="st">RENDSZER</span></div>
   <div class="cb">
     <dl class="kv">
@@ -525,6 +563,10 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   <div class="msec">
     <h3>📡 Firmware frissítés</h3>
     <p>Három mód: <b>telefonon át</b> (mobilnet kell az autó Wi-Fi-je mellett), <b>Wi-Fi-n</b> (az ESP maga tölti le) és <b>kézi .bin</b>. Utána újraindul, az oldal ellenőrzi az új verziót; hiba esetén a régi marad. Álló motornál frissíts.</p>
+  </div>
+  <div class="msec">
+    <h3>📲 Főképernyőhöz adás</h3>
+    <p>A Rendszer fül lépéseivel a vezérlő ikonként a telefon főképernyőjére tehető. iPhone-on teljes képernyős alkalmazásként nyílik, Androidon böngészőlapként. Indítás előtt csatlakozz az autó Wi-Fi-jére.</p>
   </div>
 </div>
     <div class="modal-foot"><button class="btn" onclick="closeModal()">RENDBEN, ÉRTETTEM</button></div>
@@ -1701,6 +1743,17 @@ showGrp(store.get('grp', 'grpLaunch'));
 showTab(location.hash.slice(1));
 $('p2Box').addEventListener('toggle', () => { if ($('p2Box').open) { refreshInfo(); pollStart(); } });
 window.addEventListener('beforeunload', e => { if (isDirty() && !FW.reloading) { e.preventDefault(); e.returnValue = ''; } });
+// Home-screen install: plain http is no secure context (no install prompt, no service worker),
+// so the card shows this phone's own menu steps, or that it already runs from the home screen
+{
+  const ua = navigator.userAgent, app = navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+  const ios = /iP(hone|ad|od)/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1), android = /Android/.test(ua);
+  $('appOk').hidden = !app;
+  $('appWhy').hidden = app;
+  $('appIos').hidden = app || android;
+  $('appAnd').hidden = app || ios;
+  txt('sumApp', app ? '✔ TELEPÍTVE' : '');
+}
 // Web fonts after load, never blocking (no internet on the car Wi-Fi)
 window.addEventListener('load', () => setTimeout(() => {
   const l = document.createElement('link');
@@ -1737,3 +1790,26 @@ if (DEMO) {
 </body>
 </html>
 )rawliteral";
+
+// Web app manifest, GET /manifest.webmanifest (swift_show_tuning.ino), with the icon of
+// web_icon.h. http://192.168.4.1 is not a secure context, so browsers never offer a real
+// install (no install prompt, no service worker): iOS opens the home-screen icon full screen
+// (apple-mobile-web-app-capable in the page), Chrome on Android makes a shortcut that opens
+// as a normal tab. The page's "Főképernyőhöz adás" card explains the steps.
+const char WEB_MANIFEST[] PROGMEM = R"json({
+  "id": "/",
+  "name": "Swift Show Tuning",
+  "short_name": "Swift Show",
+  "description": "Suzuki Swift 1.3 8V show tuning vezérlő",
+  "lang": "hu",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#07090e",
+  "theme_color": "#07090e",
+  "icons": [
+    {"src": "/icon.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "/icon.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable"}
+  ]
+})json";
