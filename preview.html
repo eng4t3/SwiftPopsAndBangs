@@ -356,7 +356,7 @@
     </div>
   </section>
 
-  <button id="saveBtn" class="save-btn" onclick="saveToFlash()"><b id="saveTxt"></b><small id="saveSub"></small></button>
+  <button id="saveBtn" class="save-btn"><b id="saveTxt"></b><small id="saveSub"></small></button>
   <button class="btn warn" id="resetBtn" onclick="restoreDefaults()">🔄 AJÁNLOTT ÉRTÉKEK VISSZAÁLLÍTÁSA</button>
 </div>
 
@@ -1712,7 +1712,24 @@ function go(t) {
   else { history.replaceState(null, '', '#' + t); showTab(t); }
 }
 window.addEventListener('hashchange', () => showTab(location.hash.slice(1)));
-$('tabbar').addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (b) go(b.dataset.tab); });
+// Fixed / sticky controls act on touch release: on iOS a tap that stops a still decelerating
+// scroll (the barely visible tail of a flick lasts ~2 s) gets pointer events but no click, so
+// right after scrolling the first tap on them was lost. click stays for mouse / keyboard.
+function onTap(el, sel, fn) {
+  let down = null, at = 0;
+  el.addEventListener('pointerdown', e => { down = e.isPrimary && !e.button ? { b: e.target.closest(sel), x: e.clientX, y: e.clientY } : null; });
+  el.addEventListener('pointercancel', () => { down = null; });
+  el.addEventListener('pointerup', e => {
+    const d = down;
+    down = null;
+    if (!d || !d.b || d.b.disabled || e.target.closest(sel) !== d.b || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 16) return;
+    at = Date.now();
+    fn(d.b);
+  });
+  el.addEventListener('click', e => { const b = e.target.closest(sel); if (b && Date.now() - at > 700) fn(b); });
+}
+onTap($('tabbar'), '[data-tab]', b => go(b.dataset.tab));
+onTap($('saveBtn'), '#saveBtn', saveToFlash);
 // one setting group at a time, picked with the chip row
 function showGrp(id) {
   if (!$(id)) id = 'grpLaunch';
